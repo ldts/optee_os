@@ -24,6 +24,7 @@
 static uint8_t stored_key[MKVB_SIZE];
 static bool mkvb_retrieved;
 
+#if defined(CFG_MX6) || defined(CFG_MX6UL)
 static void caam_enable_clocks(void)
 {
 	vaddr_t ccm_base = core_mmu_get_va(CCM_BASE, MEM_AREA_IO_SEC);
@@ -37,6 +38,30 @@ static void caam_enable_clocks(void)
 		io_setbits32(ccm_base + CCM_CCGR6,
 			     CCM_CCGR6_EMI_SLOW);
 }
+#endif /* CFG_MX6 || CFG_MX6UL */
+
+#if defined(CFG_MX7)
+static void caam_enable_clocks(void)
+{
+	vaddr_t ccm_base = core_mmu_get_va(CCM_BASE, MEM_AREA_IO_SEC);
+
+	io_setbits32(ccm_base + CCM_CCGRx_SET(CCM_CLOCK_DOMAIN_CAAM),
+		     CCM_CCGRx_ALWAYS_ON(0));
+}
+#endif /* CFG_MX7 */
+
+#if defined(CFG_MX7ULP)
+#define PCC_CGC_BIT_SHIFT 30
+#define PCC_ENABLE_CLOCK (1 << PCC_CGC_BIT_SHIFT)
+#define PCC_DISABLE_CLOCK (0 << PCC_CGC_BIT_SHIFT)
+#define PCC_CAAM 0x90
+static void caam_enable_clocks(void)
+{
+	vaddr_t pcc2_base = core_mmu_get_va(PCC2_BASE, MEM_AREA_IO_SEC);
+
+	io_setbits32(pcc2_base + PCC_CAAM, PCC_ENABLE_CLOCK);
+}
+#endif /* CFG_MX7ULP */
 
 static TEE_Result imx_caam_reset_jr(struct imx_caam_ctrl *ctrl)
 {
