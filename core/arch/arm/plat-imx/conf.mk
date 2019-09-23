@@ -57,7 +57,8 @@ mx7s-flavorlist = \
 	mx7swarp7_mbl \
 
 mx7ulp-flavorlist = \
-	mx7ulpevk
+	mx7ulpevk \
+	mx7ulpeaucom \
 
 mx8mq-flavorlist = \
 	mx8mqevk
@@ -257,6 +258,12 @@ CFG_IMX_WDOG_EXT_RESET = y
 endif
 
 ifneq (,$(filter $(PLATFORM_FLAVOR),mx7ulpevk))
+CFG_DDR_SIZE ?= 0x40000000
+CFG_NS_ENTRY_ADDR ?= 0x60800000
+CFG_UART_BASE ?= UART4_BASE
+endif
+
+ifneq (,$(filter $(PLATFORM_FLAVOR),mx7ulpeaucom))
 CFG_DDR_SIZE ?= 0x40000000
 CFG_NS_ENTRY_ADDR ?= 0x60800000
 CFG_UART_BASE ?= UART4_BASE
