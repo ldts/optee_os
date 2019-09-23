@@ -46,6 +46,7 @@
 #define UART6_BASE		0x40a60000
 #define UART7_BASE		0x40a70000
 
+#define WDOG_BASE		0x403D0000
 #define IRAM_BASE		0x1FFFC000
 #define IRAM_SIZE		0x4000
 
