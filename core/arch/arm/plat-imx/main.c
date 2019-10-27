@@ -90,6 +90,10 @@ register_phys_mem(MEM_AREA_TEE_COHERENT,
 		  CORE_MMU_PGDIR_SIZE);
 #endif
 
+#ifdef TEE_SHMEM_START
+register_dynamic_shm(TEE_SHMEM_START, TEE_SHMEM_SIZE);
+#endif
+
 #if defined(CFG_PL310)
 register_phys_mem_pgdir(MEM_AREA_IO_SEC,
 			ROUNDDOWN(PL310_BASE, CORE_MMU_PGDIR_SIZE),
