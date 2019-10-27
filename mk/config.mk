@@ -501,6 +501,10 @@ CFG_DTB_MAX_SIZE ?= 0x10000
 CFG_SP_INIT_INFO_MAX_SIZE ?= 0x1000
 
 # Device Tree Overlay support.
+#
+# CASE 1
+# ------
+#
 # CFG_EXTERNAL_DTB_OVERLAY allows to append a DTB overlay into an existing
 # external DTB. The overlay is created when no valid DTB overlay is found.
 # CFG_GENERATE_DTB_OVERLAY allows to create a DTB overlay at external
@@ -512,11 +516,33 @@ CFG_SP_INIT_INFO_MAX_SIZE ?= 0x1000
 CFG_EXTERNAL_DTB_OVERLAY ?= n
 CFG_GENERATE_DTB_OVERLAY ?= n
 
+ifeq ($(CFG_OVERLAY_ADDR),)
 ifeq (y-y,$(CFG_EXTERNAL_DTB_OVERLAY)-$(CFG_GENERATE_DTB_OVERLAY))
 $(error CFG_EXTERNAL_DTB_OVERLAY and CFG_GENERATE_DTB_OVERLAY are exclusive)
 endif
 _CFG_USE_DTB_OVERLAY := $(call cfg-one-enabled,CFG_EXTERNAL_DTB_OVERLAY \
 			  CFG_GENERATE_DTB_OVERLAY)
+endif
+#
+# CASE 2
+# ------
+# This define enables support for an OP-TEE provided DTB overlay as well as
+# extending a device tree that must be passed as an input parameter.
+# This define is not compatible with CFG_EXTERNAL_DTB_OVERLAY nor
+# CFG_GENERATE_DTB_OVERLAY nor CFG_DT_ADDR and a build error should trigger
+# if either of those are enabled
+ifneq ($(strip $(CFG_OVERLAY_ADDR)),)
+ifeq ($(CFG_EXTERNAL_DTB_OVERLAY),y)
+$(error Cannot implement OVERLAY_ADDR and EXTERNAL_DTB_OVERLAY)
+endif
+ifeq ($(CFG_GENERATE_DTB_OVERLAY),y)
+$(error Cannot implement OVERLAY_ADDR and GENERATE_DTB_OVERLAY)
+endif
+ifneq ($(strip $(CFG_DT_ADDR)),)
+$(error Cannot implement OVERLAY_ADDR and CFG_DT_ADDR)
+endif
+$(call force,_CFG_USE_DTB_OVERLAY,y)
+endif
 
 # All embedded tests are supposed to be disabled by default, this flag
 # is used to control the default value of all other embedded tests
