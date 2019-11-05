@@ -68,6 +68,12 @@
 #define SNVS_LPCR_DP_EN_MASK		BIT(5)
 #define SNVS_LPCR_SRTC_ENV_MASK		1
 
+#define SNVS_HPCOMR			0x04
+#define BM_SNVS_HPCOMR_MKS_EN		BIT32(13)
+
+#define SNVS_LPMKCR			0x3C
+#define BM_SNVS_LP_MKCR_MKS_SEL		SHIFT_U32(0x3, 0)
+
 #define WCR_OFF				0
 
 /* GPC V2 */

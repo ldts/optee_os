@@ -34,6 +34,12 @@ struct imx_caam_job_ring {
 #define CCM_CCGR0_CAAM_WRAPPER_ACLK	SHIFT_U32(3, 10)
 #define CCM_CCGR6_EMI_SLOW		SHIFT_U32(3, 10)
 
+#define SEC_REG_CSTA_OFFSET		0x0FD4
+#define CSTA_MOO_SHIFT			8
+#define CSTA_MOO_MASK			(0x3 << CSTA_MOO_SHIFT)
+#define CSTA_MOO_SECURE		(0x1 << CSTA_MOO_SHIFT)
+#define CSTA_MOO_TRUSTED		(0x2 << CSTA_MOO_SHIFT)
+
 /* Descriptor and MKVB Definitions */
 #define MKVB_SIZE			32
 #define MKVB_DESC_SEQ_OUT		0xf8000020

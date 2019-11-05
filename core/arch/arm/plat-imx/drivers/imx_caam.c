@@ -165,11 +165,64 @@ out:
 	return ret;
 }
 
+static TEE_Result check_master_key_source_otpmk(void)
+{
+	vaddr_t snvs = core_mmu_get_va(SNVS_BASE, MEM_AREA_IO_SEC);
+	uint32_t val;
+
+	val = io_read32(snvs + SNVS_HPCOMR);
+	val &= BM_SNVS_HPCOMR_MKS_EN;
+
+	/* Check master key source if selected via MASTER_KEY_SEL */
+	if (val) {
+		val = io_read32(snvs + SNVS_LPMKCR);
+		val &= ~BM_SNVS_LP_MKCR_MKS_SEL;
+		if (val != 0) {
+			EMSG("OTPMK is not set as master key");
+			return TEE_ERROR_SECURITY;
+		}
+	}
+
+	DMSG("Master key source is set to OTPMK");
+
+	return TEE_SUCCESS;
+}
+
+static TEE_Result check_caam_mode_trusted(void)
+{
+	vaddr_t caam = core_mmu_get_va(CAAM_BASE, MEM_AREA_IO_SEC);
+	uint32_t val;
+
+	/* We can only read true OTPMK when CAAM is operating in secure
+	 * or trusted mode.
+	 */
+	val = io_read32(caam + SEC_REG_CSTA_OFFSET);
+	switch (val & CSTA_MOO_MASK) {
+	case CSTA_MOO_SECURE:
+		DMSG("CAAM mode of operation: SECURE");
+		break;
+	case CSTA_MOO_TRUSTED:
+		DMSG("CAAM mode of operation: TRUSTED");
+		break;
+	default:
+		EMSG("CAAM not secure/trusted; OTPMK inaccessible");
+		return TEE_ERROR_SECURITY;
+	}
+
+	return TEE_SUCCESS;
+}
+
 TEE_Result tee_otp_get_hw_unique_key(struct tee_hw_unique_key *hwkey)
 {
 	int ret = TEE_ERROR_SECURITY;
 
 	if (!mkvb_retrieved) {
+		ret = check_master_key_source_otpmk();
+		if (ret)
+			return ret;
+		ret = check_caam_mode_trusted();
+		if (ret)
+			return ret;
 		ret = caam_get_mkvb(stored_key);
 		if (ret)
 			return ret;
