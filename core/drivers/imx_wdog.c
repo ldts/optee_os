@@ -44,9 +44,23 @@
 static bool ext_reset;
 static vaddr_t wdog_base;
 
+#ifdef CFG_MX7ULP
+static inline void __raw_writel(volatile vaddr_t addr, uint32_t val)
+{
+	asm volatile("str %1, %0"
+		     : : "Qo" (*(volatile uint32_t *)addr), "r" (val));
+}
+
+static inline void __raw_writeb(volatile vaddr_t addr, uint8_t val)
+{
+	asm volatile("strb %1, %0"
+		     : : "Qo" (*(volatile uint8_t *)addr), "r" (val));
+}
+#endif
+
 void imx_wdog_restart(void)
 {
-	uint32_t val;
+	uint32_t val __attribute__((unused));
 
 	if (!wdog_base) {
 		EMSG("No wdog mapped\n");
@@ -54,15 +68,26 @@ void imx_wdog_restart(void)
 	}
 
 #ifdef CFG_MX7ULP
-	val = io_read32(wdog_base + WDOG_CS);
+	dmb();
+	__raw_writel(wdog_base + WDOG_CNT, UNLOCK_SEQ0);
+	__raw_writel(wdog_base + WDOG_CNT, UNLOCK_SEQ1);
+	dmb();
+	/* Wait unlock */
+	while (!(io_read8(wdog_base + WDOG_CS + 1) & BIT(3)));
 
-	io_write32(wdog_base + WDOG_CNT, UNLOCK);
-	/* Enable wdog */
-	io_write32(wdog_base + WDOG_CS, val | WDOG_CS_EN);
+	/* these sequence must be completed within 128 clock cycles after unlock */
+	dmb();
+	__raw_writel(wdog_base + WDOG_TOVAL, 0x400);
+	__raw_writeb(wdog_base + WDOG_WIN, 0);
+	__raw_writeb(wdog_base + WDOG_CS + 1, BIT(5) | BIT(0));
+	__raw_writeb(wdog_base + WDOG_CS,     BIT(7) | BIT(5));
+	dmb();
 
-	io_write32(wdog_base + WDOG_CNT, UNLOCK);
-	io_write32(wdog_base + WDOG_TOVAL, 1000);
-	io_write32(wdog_base + WDOG_CNT, REFRESH);
+	/* this wait for configuration is not necessary since the driver will
+	 * just wait after this operation anyway. However we will leave it here
+	 * for formal purposes
+	 */
+	while (!(io_read32(wdog_base + WDOG_CS) & WDOG_CS_RCS));
 #else
 	if (ext_reset)
 		val = 0x14;
@@ -83,6 +108,10 @@ void imx_wdog_restart(void)
 	io_write16(wdog_base + WDT_WCR, val);
 #endif
 
+	/* debug tip: during the while loop is worth checking that the
+	 * watchdog counter is progressing as the clock could have been stopped
+	 * causing the board to wait forever
+	 */
 	while (1)
 		;
 }

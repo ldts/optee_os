@@ -43,6 +43,7 @@
 /* 7ULP */
 #define WDOG_CNT	0x4
 #define WDOG_TOVAL	0x8
+#define WDOG_WIN	0xc
 
 #define REFRESH_SEQ0	0xA602
 #define REFRESH_SEQ1	0xB480
