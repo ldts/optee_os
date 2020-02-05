@@ -56,5 +56,6 @@ endef
 
 # Definition of the HW and Cryto Driver Algorithm supported by all i.MX
 $(eval $(call cryphw-enable-drv-hw, HASH))
+$(eval $(call cryphw-enable-drv-hw, MKVB))
 
 endif
