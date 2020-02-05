@@ -31,4 +31,10 @@ uint8_t caam_hal_ctrl_jrnum(vaddr_t baseaddr);
  */
 uint8_t caam_hal_ctrl_hash_limit(vaddr_t baseaddr);
 
+/*
+ * Inrements the PRIBLOB fields to 11 to lockout generation of the same MKVB
+ * hash from the normal world.
+ */
+void caam_hal_ctrl_inc_priblob(void);
+
 #endif /* __CAAM_HAL_CTRL_H__ */
