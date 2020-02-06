@@ -17,12 +17,13 @@
 #include <kernel/panic.h>
 #include <tee_api_types.h>
 
+struct caam_jrcfg jrcfg;
+
 /* Crypto driver initialization */
 static TEE_Result crypto_driver_init(void)
 {
 	TEE_Result retresult = TEE_ERROR_GENERIC;
 	enum caam_status retstatus = CAAM_FAILURE;
-	struct caam_jrcfg jrcfg = {};
 
 	/* Enable the CAAM Clock */
 	caam_hal_clk_enable(true);
@@ -60,15 +61,6 @@ static TEE_Result crypto_driver_init(void)
 	/* Everything is OK, register the Power Management handler */
 	caam_pwr_init();
 
-	/*
-	 * Configure Job Rings to NS World
-	 * If the Driver Crypto is not used CFG_NXP_CAAM_RUNTIME_JR is not
-	 * enable, hence relax the JR used for the CAAM configuration to
-	 * the Non-Secure
-	 */
-	if (jrcfg.base)
-		caam_hal_cfg_setup_nsjobring(&jrcfg);
-
 	retresult = TEE_SUCCESS;
 exit_init:
 	if (retresult != TEE_SUCCESS) {
@@ -80,6 +72,20 @@ exit_init:
 }
 
 early_driver_init(crypto_driver_init);
+
+static TEE_Result crypto_driver_deinit(void)
+{
+	/*
+	 * Configure Job Rings to NS World
+	 * If the Driver Crypto is not used CFG_NXP_CAAM_RUNTIME_JR is not
+	 * enable, hence relax the JR used for the CAAM configuration to
+	 * the Non-Secure
+	 */
+	if (jrcfg.base)
+		caam_hal_cfg_setup_nsjobring(&jrcfg);
+	return TEE_SUCCESS;
+}
+driver_init_late(crypto_driver_deinit);
 
 /* Crypto driver late initialization to complete on-going CAAM operations */
 static TEE_Result init_caam_late(void)
