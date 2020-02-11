@@ -45,7 +45,7 @@ struct inring_entry {
 struct __packed outring_entry {
 	uint32_t desc;   /* Physical address of the descriptor */
 	uint32_t status; /* Status of the executed job */
-};
+}__aligned(4);
 #endif /* CFG_CAAM_64BIT */
 
 /*

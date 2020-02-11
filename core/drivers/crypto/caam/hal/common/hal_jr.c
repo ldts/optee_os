@@ -16,7 +16,7 @@
 /*
  * List of common JR registers to save/restore
  */
-static const struct reglist jr_backup[] = {
+static const struct reglist jr_backup[] __attribute__((unused)) = {
 	BACKUP_REG(JRX_IRBAR, 2, 0, 0),
 	BACKUP_REG(JRX_IRSR, 1, 0, 0),
 	BACKUP_REG(JRX_ORBAR, 2, 0, 0),
