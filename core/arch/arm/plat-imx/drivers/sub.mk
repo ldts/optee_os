@@ -3,3 +3,4 @@ srcs-$(CFG_IMX_CAAM) 	+= imx_caam.c
 srcs-$(CFG_CSU) 	+= imx_csu.c
 srcs-$(CFG_SCU) 	+= imx_scu.c
 srcs-$(CFG_NXP_CAAM) 	+= imx_huk.c
+srcs-$(CFG_IMX_SNVS)    += imx_snvs.c
