@@ -16,6 +16,7 @@
 #include <mm/core_memprot.h>
 #include <rng_support.h>
 #include <tee/cache.h>
+#include <tee/tee_cryp_utl.h>
 #include <string.h>
 
 /*
@@ -550,6 +551,12 @@ enum caam_status caam_rng_init(vaddr_t ctrl_addr)
 
 	return retstatus;
 }
+
+#ifdef CFG_NXP_CAAM_RNG_DRV
+void plat_rng_init(void)
+{
+}
+#endif
 
 #ifdef CFG_NXP_CAAM_RNG_DRV
 TEE_Result crypto_rng_read(void *buf, size_t blen)
