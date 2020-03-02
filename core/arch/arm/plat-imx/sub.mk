@@ -17,6 +17,7 @@ endif
 
 ifneq (,$(filter y, $(CFG_MX7) $(CFG_MX7ULP) $(CFG_MX6UL) $(CFG_MX6ULL)))
 srcs-y += a7_plat_init.S
+srcs-y += xrdc.c
 endif
 
 subdirs-$(CFG_PSCI_ARM32) += pm

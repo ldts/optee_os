@@ -24,6 +24,7 @@
 #include <sm/psci.h>
 #include <tee/entry_std.h>
 #include <tee/entry_fast.h>
+#include <xrdc.h>
 
 int psci_features(uint32_t psci_fid)
 {
@@ -237,5 +238,6 @@ int psci_cpu_suspend(uint32_t power_state,
 
 void psci_system_reset(void)
 {
+	xrdc_reset();
 	imx_wdog_restart();
 }
