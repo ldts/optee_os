@@ -46,9 +46,8 @@
 
 static struct gic_data gic_data __nex_bss;
 
-static struct imx_uart_data console_data __nex_bss;
-
 #ifdef CONSOLE_UART_BASE
+static struct imx_uart_data console_data __nex_bss;
 register_phys_mem_pgdir(MEM_AREA_IO_NSEC, CONSOLE_UART_BASE,
 			CORE_MMU_PGDIR_SIZE);
 #endif

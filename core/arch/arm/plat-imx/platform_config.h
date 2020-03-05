@@ -40,7 +40,10 @@
 #endif
 
 #define STACK_ALIGNMENT			64
+
+#if defined(CFG_IMX_LPUART) || defined(CFG_IMX_UART)
 #define CONSOLE_UART_BASE		(CFG_UART_BASE)
+#endif
 
 /* For i.MX6 Quad SABRE Lite and Smart Device board */
 #if defined(CFG_MX6QP) || defined(CFG_MX6Q) || defined(CFG_MX6D) || \
