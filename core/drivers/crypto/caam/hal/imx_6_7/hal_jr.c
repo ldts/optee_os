@@ -70,6 +70,12 @@ enum caam_status caam_hal_jr_setowner(vaddr_t ctrl_base, paddr_t jr_offset,
 			if (val == cfg_ls)
 				retstatus = CAAM_NO_ERROR;
 		}
+#ifdef CFG_NXP_WORKAROUND_CAAM_LOCKED_BY_HAB
+		if (retstatus != CAAM_NO_ERROR) {
+			EMSG("HACK: CAAM LOCKED with invalid configuration...continue booting!");
+			retstatus = CAAM_NO_ERROR;
+		}
+#endif
 	} else {
 		HAL_TRACE("JR%" PRIu32 "MIDR_LS set value 0x%" PRIx32, jr_idx,
 			  cfg_ls);
