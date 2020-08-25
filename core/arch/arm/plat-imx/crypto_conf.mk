@@ -1,3 +1,4 @@
+include mk/config.mk
 #
 # Define the cryptographic algorithm to be built
 #
@@ -46,8 +47,14 @@ $(call force, CFG_NXP_CAAM_RUNTIME_JR, y)
 #
 # Definition of all HW accelerations for all i.MX
 #
+ifeq ($(CFG_CORE_SE05X), y)
+$(call force, CFG_NXP_CAAM_RNG_DRV, n)
+CFG_CRYPTO_DRIVER_DEBUG = 0
+else
 $(call force, CFG_NXP_CAAM_RNG_DRV, y)
-$(call force, CFG_WITH_SOFTWARE_PRNG,n)
+endif
+
+CFG_WITH_SOFTWARE_PRNG = n
 
 # Force to 'y' the CFG_NXP_CAAM_xxx_DRV to enable the CAAM HW driver
 # and enable the associated CFG_CRYPTO_DRV_xxx Crypto driver
