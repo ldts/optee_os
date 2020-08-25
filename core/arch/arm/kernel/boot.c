@@ -122,6 +122,13 @@ void __panic_at_smc_return(void)
 	panic();
 }
 
+/* May be overridden in plat-$(PLATFORM)/main.c */
+__weak const char *main_get_optee_exclusive_node_name(unsigned int i)
+{
+	(void)i;
+	return NULL;
+}
+
 #if defined(CFG_WITH_ARM_TRUSTED_FW)
 void init_sec_mon(unsigned long nsec_entry __maybe_unused)
 {
@@ -1133,6 +1140,109 @@ static int mark_tzdram_as_reserved(struct dt_descriptor *dt)
 				   CFG_TZDRAM_SIZE);
 }
 
+static char *strtok(char *str, const char *delims)
+{
+	static char *pos;
+	char *start = NULL;
+
+	if (str)
+		pos = str;
+
+	if (pos) {
+		while (*pos && strchr(delims, *pos))
+			pos++;
+
+		if (*pos) {
+			start = pos;
+			while (*pos && !strchr(delims, *pos))
+				pos++;
+
+			if (*pos)
+				*pos++ = '\0';
+		}
+	}
+
+	return start;
+}
+
+static int add_descriptor_node(struct dt_descriptor *dt, const char *driver)
+{
+	unsigned int i, j;
+	char root_name[50];
+	char buffer[100];
+	char *item[10];
+	char *root;
+	int offs;
+
+	/* strok will modify the buffer */
+	strncpy(buffer, driver, sizeof(buffer));
+
+	root = strtok(buffer, "/");
+	if (!root)
+		return -1;
+
+	for (i = 0; i < ARRAY_SIZE(item); i++) {
+		item[i] = strtok(NULL, "/");
+		if (!item[i])
+			break;
+	}
+
+	if (i >= ARRAY_SIZE(item))
+		return -1;
+
+	if (fdt_path_offset(dt->blob, driver) >= 0)
+		return 0;
+
+	/* add the root node name */
+	snprintf(root_name, 50, "/%s", root);
+	offs = fdt_path_offset(dt->blob, root_name);
+	if (offs < 0) {
+		offs = add_dt_path_subnode(dt, "/", root);
+		if (offs < 0)
+			return -1;
+	}
+
+	for (j = 0; j < i; j++) {
+		offs = fdt_add_subnode(dt->blob, offs, item[j]);
+		if (offs < 0)
+			return -1;
+	}
+
+	return offs;
+}
+
+static int reserve_platform_drivers_dt_nodes(struct dt_descriptor *dt)
+{
+	const char *driver;
+	unsigned int i = 0;
+	int offs;
+
+	/* we need to guarantee that these drivers will not be used
+	 * by either EL1 or EL0 - so set the device tree node status in the
+	 * exported dts and overlay to disabled and the secure-status to okay
+	 */
+	for (;;) {
+		driver = main_get_optee_exclusive_node_name(i);
+		if (!driver)
+			break;
+
+		offs = add_descriptor_node(dt, driver);
+		if (offs < 0)
+			return -1;
+		i++;
+
+		if (!offs)
+			continue;
+
+		if (fdt_setprop_string(dt->blob, offs, "status", "disabled"))
+			return -1;
+
+		if (fdt_setprop_string(dt->blob, offs, "secure-status", "okay"))
+			return -1;
+	}
+
+	return 0;
+}
 static void update_external_dt(void)
 {
 	struct dt_descriptor *dt = &external_dt;
@@ -1145,6 +1255,9 @@ static void update_external_dt(void)
 
 	if (config_psci(dt))
 		panic("Failed to config PSCI");
+
+	if (reserve_platform_drivers_dt_nodes(dt))
+		panic("Failed to reserve drivers for OP-TEE exclusive access");
 
 #ifdef CFG_CORE_RESERVED_SHM
 	if (mark_static_shm_as_reserved(dt))
