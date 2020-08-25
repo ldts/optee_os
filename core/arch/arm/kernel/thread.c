@@ -123,12 +123,18 @@ linkage uint32_t name[num_stacks] \
 
 #define GET_STACK(stack) ((vaddr_t)(stack) + STACK_SIZE(stack))
 
-DECLARE_STACK(stack_tmp, CFG_TEE_CORE_NB_CORE, STACK_TMP_SIZE, static);
 DECLARE_STACK(stack_abt, CFG_TEE_CORE_NB_CORE, STACK_ABT_SIZE, static);
+#ifdef CFG_NXP_SE05X_SVC
+DECLARE_STACK(stack_tmp, CFG_TEE_CORE_NB_CORE, 5 * STACK_TMP_SIZE, static);
+#ifndef CFG_WITH_PAGER
+DECLARE_STACK(stack_thread, CFG_NUM_THREADS, 2 * STACK_THREAD_SIZE, static);
+#endif
+#else
+DECLARE_STACK(stack_tmp, CFG_TEE_CORE_NB_CORE, STACK_TMP_SIZE, static);
 #ifndef CFG_WITH_PAGER
 DECLARE_STACK(stack_thread, CFG_NUM_THREADS, STACK_THREAD_SIZE, static);
 #endif
-
+#endif
 #define GET_STACK_TOP_HARD(stack, n) \
 	((vaddr_t)&(stack)[n] + STACK_CANARY_SIZE / 2)
 #define GET_STACK_TOP_SOFT(stack, n) \
