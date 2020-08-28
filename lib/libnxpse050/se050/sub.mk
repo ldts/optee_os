@@ -9,7 +9,8 @@ cflags-y += -DT1oI2C_UM11225
 cflags-y += -DT1oI2C
 cflags-y += -DSSS_USE_FTR_FILE
 
-incdirs-y += ./glue/include
+incdirs-y += ./glue/include/
+incdirs-y += ./glue/include/crypto/
 incdirs-y += ./plug-and-trust/hostlib/hostLib/inc/
 incdirs-y += ./plug-and-trust/hostlib/hostLib/libCommon/infra/
 incdirs-y += ./plug-and-trust/hostlib/hostLib/libCommon/smCom/
@@ -19,13 +20,17 @@ incdirs-y += ./plug-and-trust/hostlib/hostLib/se05x_03_xx_xx/
 incdirs-y += ./plug-and-trust/sss/inc/
 incdirs-y += ./plug-and-trust/sss/ex/inc/
 incdirs-y += ./plug-and-trust/sss/port/default/
-incdirs-y += ./plug-and-trust/sss/src/user/crypto/
 
 # glue code
 srcs-y += glue/stubs.c
 srcs-y += glue/wraps.c
 srcs-y += glue/i2c.c
 srcs-y += glue/smCom.c
+srcs-y += glue/user.c
+
+# host crypto operations for SCP03
+srcs-y += glue/crypto/aes.c
+srcs-y += glue/crypto/aes_cmac.c
 
 # hostlib/hostLib/libCommon/smCom/
 srcs-y += plug-and-trust/hostlib/hostLib/libCommon/smCom/smComT1oI2C.c
@@ -60,9 +65,3 @@ srcs-y += plug-and-trust/sss/src/se05x/fsl_sss_se05x_mw.c
 srcs-y += plug-and-trust/sss/src/se05x/fsl_sss_se05x_apis.c
 srcs-y += plug-and-trust/sss/src/se05x/fsl_sss_se05x_scp03.c
 
-# sss/src/user/
-srcs-y += plug-and-trust/sss/src/user/fsl_sss_user_impl.c
-
-# sss/src/user/crypto
-srcs-y += plug-and-trust/sss/src/user/crypto/aes.c
-srcs-y += plug-and-trust/sss/src/user/crypto/aes_cmac.c

@@ -21,6 +21,7 @@
 #endif
 
 #if SSS_HAVE_HOSTCRYPTO_USER
+#include "../../../glue/include/crypto/aes.h"
 
 /**
  * @addtogroup sss_sw_host_impl
@@ -74,6 +75,11 @@ typedef struct _sss_user_impl_object
     /*! Application specific key identifier. The keyId is kept in the key  store
      * along with the key data and other properties. */
     uint32_t keyId;
+
+    /*! Implementation specific part */
+    size_t contents_size;
+    void *contents;
+    uint8_t key[16];
 } sss_user_impl_object_t;
 
 typedef struct _sss_user_impl_derive_key
@@ -101,6 +107,9 @@ typedef struct _sss_user_impl_symmetric
     sss_user_impl_object_t *keyObject;
     sss_algorithm_t algorithm;
     sss_mode_t mode;
+
+    /* AES CMAC 128 */
+    struct aes_ctx *aes;
 } sss_user_impl_symmetric_t;
 
 typedef struct _sss_user_impl_mac
@@ -110,6 +119,13 @@ typedef struct _sss_user_impl_mac
     sss_user_impl_object_t *keyObject;
     sss_algorithm_t algorithm; /*!  */
     sss_mode_t mode;           /*!  */
+
+    /*! Implementation specific part */
+    /* AES CMAC 128 */
+    struct aes_ctx *aes;
+    uint8_t cache_data[16];
+    size_t cache_len;
+    uint8_t calc_mac[16];
 } sss_user_impl_mac_t;
 
 typedef struct _sss_user_impl_digest
