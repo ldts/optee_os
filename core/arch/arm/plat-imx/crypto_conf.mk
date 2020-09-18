@@ -76,7 +76,11 @@ $(eval $(call cryphw-enable-drv-hw, CMAC))
 
 ifneq ($(filter y, $(CFG_MX6QP) $(CFG_MX6Q) $(CFG_MX6D) $(CFG_MX6DL) \
 	$(CFG_MX6S) $(CFG_MX6SL) $(CFG_MX6SLL) $(CFG_MX6SX)), y)
-$(eval $(call cryphw-enable-drv-hw, RSA))
+
+CFG_NXP_CAAM_RSA_DRV ?= y
+ifeq ($(CFG_NXP_CAAM_RSA_DRV), y)
+$(call force, CFG_CRYPTO_DRV_RSA, y)
+endif
 
 # Define the RSA Private Key Format used by the CAAM
 #   Format #1: (n, d)
