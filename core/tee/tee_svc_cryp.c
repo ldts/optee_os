@@ -130,7 +130,11 @@ static const struct tee_cryp_obj_type_attrs tee_cryp_obj_rsa_keypair_attrs[] = {
 
 	{
 	.attr_id = TEE_ATTR_RSA_PRIVATE_EXPONENT,
+#if defined(CFG_CORE_SE05X)
+	.flags = TEE_TYPE_ATTR_REQUIRED | TEE_TYPE_ATTR_GEN_KEY_OPT,
+#else
 	.flags = TEE_TYPE_ATTR_REQUIRED,
+#endif
 	.ops_index = ATTR_OPS_INDEX_BIGNUM,
 	RAW_DATA(struct rsa_keypair, d)
 	},
@@ -349,7 +353,11 @@ static const struct tee_cryp_obj_type_attrs tee_cryp_obj_ecc_pub_key_attrs[] = {
 static const struct tee_cryp_obj_type_attrs tee_cryp_obj_ecc_keypair_attrs[] = {
 	{
 	.attr_id = TEE_ATTR_ECC_PRIVATE_VALUE,
+#if defined(CFG_CORE_SE05X)
+	.flags = TEE_TYPE_ATTR_REQUIRED | TEE_TYPE_ATTR_GEN_KEY_OPT,
+#else
 	.flags = TEE_TYPE_ATTR_REQUIRED,
+#endif
 	.ops_index = ATTR_OPS_INDEX_BIGNUM,
 	RAW_DATA(struct ecc_keypair, d)
 	},
@@ -1711,6 +1719,22 @@ static TEE_Result tee_svc_obj_generate_key_rsa(
 					     param_count);
 	if (res != TEE_SUCCESS)
 		return res;
+
+	if (IS_ENABLED(CFG_CORE_SE05X)) {
+		if (get_attribute(o, type_props,
+				  TEE_ATTR_RSA_PRIVATE_EXPONENT)) {
+			/* pass the label in the private exponent */
+			size_t len = crypto_bignum_num_bytes(key->d);
+			uint8_t label[32];
+
+			if (!len || len > sizeof(label))
+				return TEE_ERROR_ITEM_NOT_FOUND;
+
+			crypto_bignum_bn2bin(key->d, label);
+			memcpy(key->d, label, len);
+		}
+	}
+
 	if (!get_attribute(o, type_props, TEE_ATTR_RSA_PUBLIC_EXPONENT))
 		crypto_bignum_bin2bn((const uint8_t *)&e, sizeof(e), key->e);
 	res = crypto_acipher_gen_rsa_key(key, key_size);
@@ -1782,7 +1806,7 @@ static TEE_Result tee_svc_obj_generate_key_ecc(
 	uint32_t key_size, const TEE_Attribute *params, uint32_t param_count)
 {
 	TEE_Result res;
-	struct ecc_keypair *tee_ecc_key;
+	struct ecc_keypair *tee_ecc_key = o->attr;
 
 	/* Copy the present attributes into the obj before starting */
 	res = tee_svc_cryp_obj_populate_type(o, type_props, params,
@@ -1790,7 +1814,19 @@ static TEE_Result tee_svc_obj_generate_key_ecc(
 	if (res != TEE_SUCCESS)
 		return res;
 
-	tee_ecc_key = (struct ecc_keypair *)o->attr;
+	if (IS_ENABLED(CFG_CORE_SE05X)) {
+		if (get_attribute(o, type_props, TEE_ATTR_ECC_PRIVATE_VALUE)) {
+			/* pass the label in the private exponent */
+			size_t len = crypto_bignum_num_bytes(tee_ecc_key->d);
+			uint8_t label[32];
+
+			if (!len || len > sizeof(label))
+				return TEE_ERROR_ITEM_NOT_FOUND;
+
+			crypto_bignum_bn2bin(tee_ecc_key->d, label);
+			memcpy(tee_ecc_key->d, label, len);
+		}
+	}
 
 	res = crypto_acipher_gen_ecc_key(tee_ecc_key, key_size);
 	if (res != TEE_SUCCESS)
