@@ -429,11 +429,20 @@ TEE_Result crypto_acipher_gen_ecc_key(struct ecc_keypair *key, size_t key_size)
 	if (ret != TEE_SUCCESS)
 		return ret;
 
-	ret = TEE_ERROR_BAD_PARAMETERS;
-
 	st = sss_se05x_key_object_init(&k_object, se050_kstore);
 	if (st != kStatus_SSS_Success)
 		return TEE_ERROR_BAD_PARAMETERS;
+
+	if (se050_oid_from_criptoki_label(&key->d, &oid) != TEE_SUCCESS)
+		return TEE_ERROR_BAD_PARAMETERS;
+
+	if (oid) {
+		st = sss_se05x_key_object_get_handle(&k_object, oid);
+		if (st != kStatus_SSS_Success)
+			return TEE_ERROR_BAD_PARAMETERS;
+
+		goto get_key;
+	}
 
 	st = se050_get_oid(kKeyObject_Mode_Persistent, &oid);
 	if (st != kStatus_SSS_Success)
@@ -452,6 +461,7 @@ TEE_Result crypto_acipher_gen_ecc_key(struct ecc_keypair *key, size_t key_size)
 	if (st != kStatus_SSS_Success)
 		return TEE_ERROR_BAD_PARAMETERS;
 
+get_key:
 	kB = sizeof(kf);
 	st = se050_key_store_get_ecc_key_bin(se050_kstore, &k_object, kf, &kB);
 	if (st != kStatus_SSS_Success) {

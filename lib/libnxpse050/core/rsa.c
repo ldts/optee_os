@@ -197,6 +197,17 @@ TEE_Result crypto_acipher_gen_rsa_key(struct rsa_keypair *key, size_t kb)
 	if (st != kStatus_SSS_Success)
 		return TEE_ERROR_BAD_PARAMETERS;
 
+	if (se050_oid_from_criptoki_label(&key->d, &oid) != TEE_SUCCESS)
+		return TEE_ERROR_BAD_PARAMETERS;
+
+	if (oid) {
+		st = sss_se05x_key_object_get_handle(&k_object, oid);
+		if (st != kStatus_SSS_Success)
+			return TEE_ERROR_BAD_PARAMETERS;
+
+		goto get_key;
+	}
+
 	st = se050_get_oid(kKeyObject_Mode_Persistent, &oid);
 	if (st != kStatus_SSS_Success)
 		return TEE_ERROR_GENERIC;
@@ -215,6 +226,7 @@ TEE_Result crypto_acipher_gen_rsa_key(struct rsa_keypair *key, size_t kb)
 		return TEE_ERROR_BAD_PARAMETERS;
 	}
 
+get_key:
 	st = sss_se05x_key_store_get_key(se050_kstore, &k_object, k, &k_len,
 					 &kb);
 	if (st != kStatus_SSS_Success) {

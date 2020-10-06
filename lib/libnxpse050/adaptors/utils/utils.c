@@ -15,6 +15,9 @@
 #define OID_MAX			((uint32_t)(OID_MIN + 0x7BFFFFFE))
 #define NBR_OID			((uint32_t)(OID_MAX - OID_MIN))
 
+/* NXP provisioned keys must be larger than OID_MAX */
+#define NXP_RESERVED_REGION	(0x80000000)
+
 #define IS_WATERMARKED(x)	(((x) & WATERMARKED(0)) == WATERMARKED(0))
 
 static void delete_transient_objects(void)
@@ -159,12 +162,38 @@ sss_status_t se050_get_oid(sss_key_object_mode_t mode, uint32_t *val)
 	return kStatus_SSS_Success;
 }
 
+TEE_Result se050_oid_from_criptoki_label(uint8_t **p, uint32_t *oid)
+{
+	uint8_t label[12] = { '\0' };
+
+	/* label is 11 bytes guaranteed by SKS */
+	memcpy(label, *p, 11);
+
+	/* not an SE_ request */
+	if (memcmp(label, "SE_", 3))
+		return TEE_SUCCESS;
+
+	free(*p);
+
+	*oid = strtoul(label + 3, NULL, 16);
+	*p = crypto_bignum_allocate(4096);
+
+	/* the requested key does not exist in the SE050 NVM */
+	if (!se050_key_exists(*oid, &se050_session->s_ctx))
+		return TEE_ERROR_GENERIC;
+
+	return TEE_SUCCESS;
+}
+
 static uint32_t se050_key(uint64_t key)
 {
 	uint32_t oid = (uint32_t)key;
 
 	if (!IS_WATERMARKED(key))
 		return 0;
+
+	if (oid >= NXP_RESERVED_REGION)
+		return oid;
 
 	if (oid < OID_MIN || oid > OID_MAX)
 		return 0;
