@@ -109,7 +109,7 @@ CFG_CORE_SE05X_DISPLAY_INFO ?= y
 CFG_CORE_SE05X_OEFID ?= n
 CFG_STACK_THREAD_EXTRA ?= 8192
 CFG_STACK_TMP_EXTRA ?= 8192
-$(call force, CFG_CRYPTO_RSASSA_NA1, n, not supported by se050)
+CFG_CRYPTO_RSASSA_NA1 ?= y
 $(call force, CFG_NXP_SE05X_SVC, y)
 $(call force, CFG_NXP_SE05X_HMAC_DRV, y)
 # if the platform already implements an RNG driver, it must be

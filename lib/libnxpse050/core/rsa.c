@@ -9,6 +9,7 @@
 #include <kernel/panic.h>
 #include <se050.h>
 #include <string.h>
+#include <tee_api_defines_extensions.h>
 
 static uint32_t tee2se050(uint32_t algo)
 {
@@ -49,6 +50,7 @@ static uint32_t tee2se050(uint32_t algo)
 		return kAlgorithm_SSS_RSASSA_NO_PADDING;
 #ifdef CFG_CRYPTO_RSASSA_NA1
 	case TEE_ALG_RSASSA_PKCS1_V1_5:
+		return kAlgorithm_SSS_RSASSA_PKCS1_V1_5_NO_HASH;
 #endif
 	case TEE_ALG_RSASSA_PKCS1_V1_5_MD5:
 	case TEE_ALG_RSASSA_PKCS1_V1_5_MD5SHA1:
