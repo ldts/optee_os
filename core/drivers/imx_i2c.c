@@ -7,6 +7,7 @@
 #include <initcall.h>
 #include <io.h>
 #include <kernel/delay.h>
+#include <kernel/panic.h>
 #include <mm/core_memprot.h>
 #include <mm/core_mmu.h>
 #include <platform_config.h>
@@ -14,7 +15,14 @@
 #include <trace.h>
 #include <util.h>
 
+#ifndef I2C_CLK_RATE
 #define I2C_CLK_RATE	24000000 /* Bits per second */
+#endif
+
+/* optional imuxc */
+#ifndef I2C_INP_SCL
+#define I2C_INP_SCL 0
+#endif
 
 static struct io_pa_va i2c_bus[] = {
 	{ .pa = I2C1_BASE, },
@@ -35,17 +43,23 @@ static struct imx_i2c_mux {
 	struct imx_i2c_mux_regs {
 		uint32_t scl_mux;
 		uint32_t scl_cfg;
+		uint32_t scl_inp;
 		uint32_t sda_mux;
 		uint32_t sda_cfg;
+		uint32_t sda_inp;
 	} i2c[ARRAY_SIZE(i2c_bus)];
 } i2c_mux = {
 	.base.pa = IOMUXC_BASE,
-	.i2c = {{ .scl_mux = I2C_MUX_SCL(1), .scl_cfg = I2C_CFG_SCL(1),
-		.sda_mux = I2C_MUX_SDA(1), .sda_cfg = I2C_CFG_SDA(1), },
-	       { .scl_mux = I2C_MUX_SCL(2), .scl_cfg = I2C_CFG_SCL(2),
-		.sda_mux = I2C_MUX_SDA(2), .sda_cfg = I2C_CFG_SDA(2), },
-	       { .scl_mux = I2C_MUX_SCL(3), .scl_cfg = I2C_CFG_SCL(3),
-		.sda_mux = I2C_MUX_SDA(3), .sda_cfg = I2C_CFG_SDA(3), },},
+	.i2c = { { .scl_mux = I2C_MUX_SCL(1), .scl_cfg = I2C_CFG_SCL(1),
+		   .scl_inp = I2C_INP_SCL(1), .sda_mux = I2C_MUX_SDA(1),
+		   .sda_cfg = I2C_CFG_SDA(1), .sda_inp = I2C_INP_SDA(1), },
+		 { .scl_mux = I2C_MUX_SCL(2), .scl_cfg = I2C_CFG_SCL(2),
+		   .scl_inp = I2C_INP_SCL(2), .sda_mux = I2C_MUX_SDA(2),
+		   .sda_cfg = I2C_CFG_SDA(2), .sda_inp = I2C_INP_SDA(2), },
+		 { .scl_mux = I2C_MUX_SCL(3), .scl_cfg = I2C_CFG_SCL(3),
+		   .scl_inp = I2C_INP_SCL(3), .sda_mux = I2C_MUX_SDA(3),
+		   .sda_cfg = I2C_CFG_SDA(3), .sda_inp = I2C_INP_SDA(3), },
+	},
 };
 
 #define I2DR				0x10
@@ -132,10 +146,28 @@ static void i2c_set_prescaler(uint8_t bid, uint32_t bps)
 
 static void i2c_set_bus_speed(uint8_t bid, int bps)
 {
-	/* Enable the clock */
-	io_write32(i2c_clk.base.va + CCM_CCGRx_SET(i2c_clk.i2c[bid]),
-		   CCM_CCGRx_ALWAYS_ON(0));
+	vaddr_t addr = i2c_clk.base.va;
+	uint32_t val = 0;
 
+#if defined(CFG_MX8MM)
+	addr += CCM_CCGRx_SET(i2c_clk.i2c[bid]);
+	val = CCM_CCGRx_ALWAYS_ON(0);
+#elif defined(CFG_MX6ULL)
+	switch (bid) {
+	case 0:
+		val = BM_CCM_CCGR2_I2C1_SERIAL;
+		break;
+	case 1:
+		val = BM_CCM_CCGR2_I2C2_SERIAL;
+		break;
+	default:
+		val = BM_CCM_CCGR2_I2C3_SERIAL;
+		break;
+	}
+	addr += i2c_clk.i2c[bid];
+	val |= io_read32(addr);
+#endif
+	io_write32(addr, val);
 	i2c_set_prescaler(bid, bps);
 }
 
@@ -158,7 +190,6 @@ static TEE_Result i2c_sync_bus(uint8_t bid, bool (*match)(uint32_t),
 			return TEE_SUCCESS;
 		}
 	}
-
 	return TEE_ERROR_BUSY;
 }
 
@@ -269,7 +300,6 @@ static TEE_Result i2c_init_transfer(uint8_t bid, uint8_t chip)
 
 	/* Enable the interface */
 	i2c_io_write8(bid, I2CR, I2CR_IEN);
-
 	tmp = i2c_io_read8(bid, I2CR) | I2CR_MSTA;
 	i2c_io_write8(bid, I2CR, tmp);
 
@@ -350,8 +380,15 @@ TEE_Result imx_i2c_init(uint8_t bid, int bps)
 
 	io_write32(mux->base.va + mux->i2c[bid].scl_mux, I2C_MUX_VAL(bid));
 	io_write32(mux->base.va + mux->i2c[bid].scl_cfg, I2C_CFG_VAL(bid));
+	if (mux->i2c[bid].scl_inp)
+		io_write32(mux->base.va + mux->i2c[bid].scl_inp,
+			   I2C_INP_VAL(bid));
+
 	io_write32(mux->base.va + mux->i2c[bid].sda_mux, I2C_MUX_VAL(bid));
 	io_write32(mux->base.va + mux->i2c[bid].sda_cfg, I2C_CFG_VAL(bid));
+	if (mux->i2c[bid].scl_inp)
+		io_write32(mux->base.va + mux->i2c[bid].scl_inp,
+			   I2C_INP_VAL(bid));
 
 	/* Baud rate in bits per second */
 	i2c_set_bus_speed(bid, bps);
@@ -384,6 +421,28 @@ static TEE_Result i2c_init(void)
 	for (n = 0; n < ARRAY_SIZE(i2c_bus); n++) {
 		if (get_va(i2c_bus[n].pa, &i2c_bus[n].va) != TEE_SUCCESS)
 			return TEE_ERROR_GENERIC;
+	}
+
+	if (1) {
+		/* Remove before posting ------------------------------------*/
+		size_t j, k;
+		/* Probe the bus and check the signals on the header */
+		for (j = 0; j < 2; j++) {
+			IMSG("bus %d start\n", j);
+			udelay(100000);
+			imx_i2c_init(j, 100000);
+			k = 0;
+			for (n = 1; n < 0x7f; n++) {
+				if (!imx_i2c_probe(j, n)) {
+					IMSG("------------------------\n");
+					IMSG("bus %d: found device (%d)\n", j, n);
+					IMSG("------------------------\n");
+					k++;
+				}
+			}
+			IMSG("bus %d probe done: devices found %d\n", j, k);
+		}
+		/* Remove before posting ------------------------------------*/
 	}
 
 	return TEE_SUCCESS;

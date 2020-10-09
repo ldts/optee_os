@@ -855,4 +855,6 @@
 #define BM_CCM_ANALOG_PLL_ARM_DIV_SELECT	\
 			SHIFT_U32(0x7F, BS_CCM_ANALOG_PLL_DIV_SELECT)
 
+#define I2C_CLK_CGR(__x)	0x70
+
 #endif /* __IMX6_CRM_H__ */
