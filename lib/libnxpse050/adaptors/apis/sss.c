@@ -279,23 +279,27 @@ void se050_delete_persistent_key(uint8_t *data, size_t len)
 	p = p - 4;
 	memcpy((void *)&val, p, sizeof(val));
 
+	/* customer key range */
+	if (!val || val > 0x7BFFFFFF)
+		return;
+
 	status = sss_se05x_key_object_init(&k_object, se050_kstore);
 	if (status != kStatus_SSS_Success) {
-		EMSG("error deleting persistent key");
+		EMSG("can't delete key 0x%x\n", val);
 		return;
 	}
 
 	status = sss_se05x_key_object_get_handle(&k_object, val);
 	if (status != kStatus_SSS_Success) {
-		EMSG("error deleting persistent key");
+		EMSG("can't delete key 0x%x\n", val);
 		return;
 	}
 
 	status = sss_se05x_key_store_erase_key(se050_kstore, &k_object);
 	if (status != kStatus_SSS_Success) {
-		EMSG("error deleting persistent key");
+		EMSG("can't delete key 0x%x\n", val);
 		return;
 	}
 
-	IMSG("deleted se050 persistent key 0x%x", val);
+	IMSG("se050: deleted key 0x%x\n", val);
 }
