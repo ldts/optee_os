@@ -83,6 +83,7 @@ void crypto_authenc_copy_state(void *dst_ctx, void *src_ctx);
 
 #if defined(CFG_CORE_SE05X)
 TEE_Result crypto_enable_scp03(unsigned int rotate_keys);
+TEE_Result crypto_cert_get(uint8_t *cert, uint32_t *len, uint32_t id);
 #endif
 
 /* Implementation-defined big numbers */
