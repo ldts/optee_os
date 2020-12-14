@@ -110,12 +110,12 @@ CFG_CORE_SE05X_OEFID ?= n
 CFG_STACK_THREAD_EXTRA ?= 8192
 CFG_STACK_TMP_EXTRA ?= 8192
 CFG_CRYPTO_RSASSA_NA1 ?= y
-$(call force, CFG_NXP_SE05X_SVC, y)
-$(call force, CFG_NXP_SE05X_HMAC_DRV, y)
+$(call force,CFG_NXP_SE05X_SVC, y)
+$(call force,CFG_NXP_SE05X_HMAC_DRV, y)
 # if the platform already implements an RNG driver, it must be
 # disabled or it will conflict with the one provided by the SE05X
 # library
-$(call force, CFG_NXP_SE05X_RNG_DRV, y)
+$(call force,CFG_NXP_SE05X_RNG_DRV, y)
 libname = nxpse050
 libdir = lib/libnxpse050
 include mk/lib.mk
