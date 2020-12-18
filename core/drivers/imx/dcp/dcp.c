@@ -380,6 +380,8 @@ TEE_Result dcp_cipher_do_init(struct dcp_cipher_data *data,
 	if (init->key_mode == DCP_OTP) {
 		desc->ctrl0 |= DCP_CONTROL0_OTP_KEY;
 		desc->ctrl1 |= DCP_CONTROL1_KEY_SELECT_OTP_CRYPTO;
+	} else if (init->key_mode == DCP_OTP_UNIQUE) {
+		desc->ctrl1 |= DCP_CONTROL1_KEY_SELECT_OTP_UNIQUE;
 	} else if (init->key_mode == DCP_PAYLOAD) {
 		desc->ctrl0 |= DCP_CONTROL0_PAYLOAD_KEY;
 		if (!init->key)

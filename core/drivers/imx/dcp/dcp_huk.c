@@ -35,7 +35,7 @@ static struct {
 static TEE_Result dcp_generate_huk(struct tee_hw_unique_key *hwkey)
 {
 	struct dcp_cipher_init init = {
-		.key_mode = DCP_OTP,
+		.key_mode = DCP_OTP_UNIQUE,
 		.mode = DCP_ECB,
 		.op = DCP_ENCRYPT,
 	};

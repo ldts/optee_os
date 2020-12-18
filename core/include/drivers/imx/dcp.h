@@ -22,6 +22,7 @@ enum dcp_key_mode {
 	DCP_SRAM3,
 	DCP_PAYLOAD,
 	DCP_OTP,
+	DCP_OTP_UNIQUE,
 };
 
 enum dcp_aes_mode {
