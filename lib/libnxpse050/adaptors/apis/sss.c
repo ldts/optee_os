@@ -70,44 +70,28 @@ sss_status_t se050_rotate_scp03_keys(sss_se05x_ctx_t *ctx)
 	SE_Connect_Ctx_t *connect_ctx = NULL;
 	sss_se05x_session_t *session = NULL;
 
-#if defined CFG_CORE_SE05X_SCP03_EARLY && CFG_CORE_SE05X_SCP03_EARLY
-	/* if SCP03 was enabled during early boot, we won't be able to read
-	 * the keys from storage once they are rotated and written as the
-	 * filesystem is not ready so early.
-	 *
-	 * Therefore disable scp03 key rotation.
-	 */
-	return kStatus_SSS_Fail;
-#endif
 	if (!ctx)
 		return kStatus_SSS_Fail;
 
-	if (crypto_rng_read(new_keys.dek, sizeof(new_keys.dek)) != TEE_SUCCESS)
-		return kStatus_SSS_Fail;
-
-	if (crypto_rng_read(new_keys.mac, sizeof(new_keys.mac)) != TEE_SUCCESS)
-		return kStatus_SSS_Fail;
-
-	if (crypto_rng_read(new_keys.enc, sizeof(new_keys.enc)) != TEE_SUCCESS)
-		return kStatus_SSS_Fail;
-
-	IMSG("write new scp03 keys to secure storage");
-	status = se050_scp03_put_keys(&new_keys, &cur_keys);
-	if (status != kStatus_SSS_Success) {
-		EMSG("scp03 keys not updated");
+	status = se050_scp03_subkey_derive(&new_keys);
+	if (status != kStatus_SSS_Success)
 		return status;
-	}
 
-	IMSG("scp03 keys updated in secure storage");
+	status = se050_scp03_show_keys(&new_keys, &cur_keys);
+	if (status != kStatus_SSS_Success)
+		return status;
+
+	if (!memcmp(new_keys.enc, cur_keys.enc, sizeof(cur_keys.enc)) &&
+	    !memcmp(new_keys.mac, cur_keys.mac, sizeof(cur_keys.mac)) &&
+	    !memcmp(new_keys.dek, cur_keys.dek, sizeof(cur_keys.dek)))
+		return kStatus_SSS_Success;
 
 	connect_ctx = &ctx->open_ctx;
 	session = &ctx->session;
 
 	status = se050_scp03_prepare_rotate_cmd(ctx, &cmd, &new_keys);
-	if (status != kStatus_SSS_Success) {
-		EMSG("scp03.db keys corrupted, attempt restore");
-		goto restore;
-	}
+	if (status != kStatus_SSS_Success)
+		return status;
 
 	sss_se05x_refresh_session(se050_session, NULL);
 	sss_se05x_session_close(session);
@@ -117,19 +101,15 @@ sss_status_t se050_rotate_scp03_keys(sss_se05x_ctx_t *ctx)
 	status = sss_se05x_session_open(session, kType_SSS_SE_SE05x, 0,
 					kSSS_ConnectionType_Encrypted,
 					connect_ctx);
-	if (status != kStatus_SSS_Success) {
-		EMSG("scp03.db keys corrupted, attempt restore");
-		goto restore;
-	}
+	if (status != kStatus_SSS_Success)
+		panic();
 
 	IMSG("write scp03 keys to se050");
 	status = se050_scp03_send_rotate_cmd(&session->s_ctx, &cmd);
-	if (status != kStatus_SSS_Success) {
-		EMSG("scp03.db keys corrupted, attempt restore");
-		goto restore;
-	}
-	IMSG("write ok");
+	if (status != kStatus_SSS_Success)
+		panic();
 
+	IMSG("keys updated in the se050");
 	sss_host_session_close(&ctx->host_session);
 	sss_se05x_session_close(se050_session);
 	memset(ctx, 0, sizeof(*ctx));
@@ -140,13 +120,6 @@ sss_status_t se050_rotate_scp03_keys(sss_se05x_ctx_t *ctx)
 	} else {
 		IMSG("se050 ready [scp03 on]");
 	}
-
-	return status;
-restore:
-	if (se050_scp03_put_keys(&cur_keys, NULL) != kStatus_SSS_Success)
-		EMSG("scp03.db keys corrupted!!");
-	else
-		IMSG("scp03.db restored");
 
 	return status;
 }
@@ -161,23 +134,34 @@ sss_status_t se050_enable_scp03(sss_se05x_session_t *session)
 	struct se050_scp_key keys = { 0 };
 	sss_status_t status = kStatus_SSS_Success;
 	static bool enabled;
+	int type[] = {
+		SCP03_MANUAL,
+		SCP03_DERIVED,
+		SCP03_OFID,
+	};
+	size_t i = 0;
 
 	if (enabled)
 		return kStatus_SSS_Success;
 
-	status = se050_scp03_get_keys(&keys);
-	if (status != kStatus_SSS_Success)
-		return status;
+	for (i = 0; i < ARRAY_SIZE(type); i++) {
+		status = se050_scp03_get_keys(&keys, type[i]);
+		if (status != kStatus_SSS_Success)
+			continue;
 
-	sss_se05x_session_close(session);
+		/* only close if it was opened */
+		if (session->subsystem)
+			sss_se05x_session_close(session);
 
-	if (se050_core_service_init(&keys) != TEE_SUCCESS)
-		return kStatus_SSS_Fail;
+		if (se050_core_service_init(&keys) == TEE_SUCCESS) {
+			enabled = true;
+			IMSG("se050 ready [scp03 on]");
+			return kStatus_SSS_Success;
+		}
+		sss_host_session_close(&se050_ctx.host_session);
+	}
 
-	enabled = true;
-
-	IMSG("se050 ready [scp03 on]");
-	return kStatus_SSS_Success;
+	return kStatus_SSS_Fail;
 }
 
 /*

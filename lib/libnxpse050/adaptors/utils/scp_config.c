@@ -10,8 +10,10 @@
 #include <assert.h>
 #include <bitstring.h>
 #include <crypto/crypto.h>
+#include <kernel/huk_subkey.h>
 #include <kernel/mutex.h>
 #include <kernel/refcount.h>
+#include <kernel/tee_common_otp.h>
 #include <kernel/thread.h>
 #include <mm/mobj.h>
 #include <optee_rpc_cmd.h>
@@ -29,120 +31,6 @@
 #include <tee/tee_pobj.h>
 #include <tee/tee_svc_storage.h>
 #include <utee_defines.h>
-
-struct tee_scp03db_dir {
-	const struct tee_file_operations *ops;
-	struct tee_file_handle *fh;
-};
-
-static const char scp03db_obj_id[] = "scp03.db";
-static struct tee_pobj po = {
-	.obj_id_len = sizeof(scp03db_obj_id),
-	.obj_id = (void *)scp03db_obj_id,
-};
-
-static TEE_Result scp03db_delete_keys(void)__unused;
-static TEE_Result scp03db_delete_keys(void)
-{
-	struct tee_scp03db_dir *db = calloc(1, sizeof(struct tee_scp03db_dir));
-	TEE_Result res = TEE_SUCCESS;
-
-	assert(db);
-
-	db->ops = tee_svc_storage_file_ops(TEE_STORAGE_PRIVATE);
-	res = db->ops->open(&po, NULL, &db->fh);
-
-	/* nothing to delete */
-	if (res == TEE_ERROR_ITEM_NOT_FOUND) {
-		free(db);
-		return TEE_SUCCESS;
-	}
-
-	/* the filesystem might not be accessibe */
-	if (res != TEE_SUCCESS)
-		panic();
-
-	db->ops->close(&db->fh);
-	db->ops->remove(&po);
-	free(db);
-
-	return TEE_SUCCESS;
-}
-
-static TEE_Result scp03db_write_keys(struct se050_scp_key *keys)
-{
-	struct tee_scp03db_dir *db = calloc(1, sizeof(struct tee_scp03db_dir));
-	TEE_Result res = TEE_SUCCESS;
-	size_t len = sizeof(*keys);
-
-	assert(db);
-
-	db->ops = tee_svc_storage_file_ops(TEE_STORAGE_PRIVATE);
-
-	res = db->ops->open(&po, NULL, &db->fh);
-	if (res != TEE_SUCCESS && res != TEE_ERROR_ITEM_NOT_FOUND) {
-		EMSG("scp03.db does not exist 0x%x", res);
-		free(db);
-		return TEE_ERROR_STORAGE_NOT_AVAILABLE;
-	}
-
-	IMSG("write scp03.db");
-	res = db->ops->create(&po, true, NULL, 0, NULL, 0, keys, len, &db->fh);
-	if (res != TEE_SUCCESS) {
-		EMSG("scp03.db failed to write");
-		goto close;
-	}
-	IMSG("write ok");
-
-	IMSG("---------------------------------------------------");
-	IMSG("WARNING: Leaking SCP03 KEYS - remove for production");
-	IMSG("scp03 new keys");
-	nLog_au8("scp03.db ", 0xff, "dek: ", keys->dek, sizeof(keys->dek));
-	nLog_au8("scp03.db ", 0xff, "mac: ", keys->mac, sizeof(keys->mac));
-	nLog_au8("scp03.db ", 0xff, "enc: ", keys->enc, sizeof(keys->enc));
-	IMSG("---------------------------------------------------");
-close:
-	db->ops->close(&db->fh);
-	free(db);
-
-	return res;
-}
-
-static TEE_Result scp03db_read_keys(struct se050_scp_key *keys)
-{
-	struct tee_scp03db_dir *db = calloc(1, sizeof(struct tee_scp03db_dir));
-	TEE_Result res = TEE_SUCCESS;
-	size_t len = sizeof(*keys);
-
-	assert(db);
-
-	db->ops = tee_svc_storage_file_ops(TEE_STORAGE_PRIVATE);
-
-	res = db->ops->open(&po, NULL, &db->fh);
-	if (res != TEE_SUCCESS) {
-		EMSG("scp03.db does not exist 0x%x", res);
-		free(db);
-		return TEE_ERROR_STORAGE_NOT_AVAILABLE;
-	}
-
-	IMSG("read scp03.db");
-	res = db->ops->read(db->fh, 0, keys, &len);
-	if (res != TEE_SUCCESS) {
-		EMSG("scp03.db failed to read");
-		goto close;
-	}
-
-	if (len != sizeof(*keys)) {
-		EMSG("scp03.db corrupted");
-		res = TEE_ERROR_GENERIC;
-	}
-
-close:
-	db->ops->close(&db->fh);
-	free(db);
-
-	return res;
-}
 
 static sss_status_t encrypt_key_and_get_kcv(uint8_t *enc, uint8_t *kc,
 					    uint8_t *key, sss_se05x_ctx_t *ctx,
@@ -314,21 +202,6 @@ static sss_status_t get_ofid_key(struct se050_scp_key *keys)
 #endif
 }
 
-static sss_status_t get_db_key(struct se050_scp_key *keys)
-{
-#if defined CFG_CORE_SE05X_SCP03_EARLY && CFG_CORE_SE05X_SCP03_EARLY
-	/* file system access requires the REE to be ready to respond to
-	 * RPC calls (memory allocation and so forth). When the REE is not
-	 * ready, the system locks up waiting for RPC.
-	 */
-	return kStatus_SSS_Fail;
-#endif
-	if (scp03db_read_keys(keys) == TEE_SUCCESS)
-		return kStatus_SSS_Success;
-
-	return kStatus_SSS_Fail;
-}
-
 static sss_status_t get_config_key(struct se050_scp_key *keys __unused)
 {
 #ifdef CFG_CORE_SE05X_SCP03_CURRENT_DEK
@@ -346,17 +219,50 @@ static sss_status_t get_config_key(struct se050_scp_key *keys __unused)
 #endif
 }
 
-sss_status_t se050_scp03_get_keys(struct se050_scp_key *keys)
+sss_status_t se050_scp03_subkey_derive(struct se050_scp_key *keys)
 {
-	sss_status_t (*get_keys[])(struct se050_scp_key *) = {
-		&get_config_key, &get_db_key, &get_ofid_key,
+	struct {
+		const char *name;
+		uint8_t *data;
+	} key[3] = {
+		[0] = { .name = "dek", .data = keys->dek },
+		[1] = { .name = "mac", .data = keys->mac },
+		[2] = { .name = "enc", .data = keys->enc },
 	};
+	uint8_t msg[SE050_SCP03_KEY_SZ + 3] = { 0 };
 	size_t i = 0;
 
-	for (i = 0; i < ARRAY_SIZE(get_keys); i++)
-		if ((*get_keys[i])(keys) == kStatus_SSS_Success)
-			return kStatus_SSS_Success;
-	panic();
+	if (tee_otp_get_die_id(msg + 3, SE050_SCP03_KEY_SZ))
+		return kStatus_SSS_Fail;
+
+	for (i = 0; i < ARRAY_SIZE(key); i++) {
+		memcpy(msg, key[i].name, 3);
+		if (huk_subkey_derive(HUK_SUBKEY_SE050, msg, sizeof(msg),
+				      key[i].data, SE050_SCP03_KEY_SZ))
+			return kStatus_SSS_Fail;
+	}
+
+	return kStatus_SSS_Success;
+}
+
+sss_status_t se050_scp03_get_keys(struct se050_scp_key *keys, int index)
+{
+	sss_status_t (*get_keys[])(struct se050_scp_key *) = {
+		&get_config_key, /* development keys */
+		&se050_scp03_subkey_derive, /* derived from HUK */
+		&get_ofid_key, /* default, compiled-in */
+	};
+	static int current;
+
+	if (index >= 0) {
+		if (index < ARRAY_SIZE(get_keys))
+			current = index;
+		else
+			panic();
+	}
+	/* for key index < 0, return the currently working key */
+
+	return (*get_keys[current])(keys);
 }
 
 /*
@@ -365,22 +271,27 @@ sss_status_t se050_scp03_get_keys(struct se050_scp_key *keys)
  *
  * @return sss_status_t
  */
-sss_status_t se050_scp03_put_keys(struct se050_scp_key *keys,
-				  struct se050_scp_key *cur_keys)
+sss_status_t se050_scp03_show_keys(struct se050_scp_key *keys,
+				   struct se050_scp_key *cur_keys)
 
 {
 	sss_status_t status = kStatus_SSS_Success;
 	TEE_Result res = TEE_SUCCESS;
 
 	if (!cur_keys)
-		goto write;
+#if defined(CFG_CORE_SE05X_DISPLAY_SCP03_KEYS)		
+		goto out;
+#else
+		return kStatus_SSS_Success;
+#endif
 
-	status = se050_scp03_get_keys(cur_keys);
+	status = se050_scp03_get_keys(cur_keys, -1);
 	if (status != kStatus_SSS_Success) {
 		EMSG("failed to get the current scp03 keys");
 		return status;
 	}
 
+#if defined(CFG_CORE_SE05X_DISPLAY_SCP03_KEYS)
 	IMSG("---------------------------------------------------");
 	IMSG("WARNING: Leaking SCP03 KEYS - remove for production");
 	IMSG("scp03: current keys");
@@ -388,10 +299,15 @@ sss_status_t se050_scp03_put_keys(struct se050_scp_key *keys,
 	nLog_au8("scp03", 0xff, "mac: ", cur_keys->mac, sizeof(cur_keys->mac));
 	nLog_au8("scp03", 0xff, "enc: ", cur_keys->enc, sizeof(cur_keys->enc));
 	IMSG("---------------------------------------------------");
-write:
-	res = scp03db_write_keys(keys);
-	if (res != TEE_SUCCESS)
-		return kStatus_SSS_Fail;
 
+out:
+	IMSG("---------------------------------------------------");
+	IMSG("WARNING: Leaking SCP03 KEYS - remove for production");
+	IMSG("scp03 new keys");
+	nLog_au8("scp03.db ", 0xff, "dek: ", keys->dek, sizeof(keys->dek));
+	nLog_au8("scp03.db ", 0xff, "mac: ", keys->mac, sizeof(keys->mac));
+	nLog_au8("scp03.db ", 0xff, "enc: ", keys->enc, sizeof(keys->enc));
+	IMSG("---------------------------------------------------");
+#endif
 	return kStatus_SSS_Success;
 }
