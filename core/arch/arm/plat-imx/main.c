@@ -121,6 +121,7 @@ const char *main_get_optee_exclusive_node_name(unsigned int i)
 #if defined CFG_IMX_DCP
 /* list platforms */
 #if defined(PLATFORM_FLAVOR_mx6ullevk)
+		"/soc/aips-bus@2200000/rng@2284000",
 		"/soc/aips-bus@2200000/crypto@2280000",
 		"/soc/bus@2200000/crypto@2280000",
 #endif
