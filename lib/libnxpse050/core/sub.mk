@@ -32,7 +32,8 @@ srcs-$(CFG_NXP_SE05X_RNG_DRV) += rng.c
 ifeq ($(CFG_CRYPTO_AES),y)
 # srcs-y += aes.c
 # srcs-$(CFG_CRYPTO_ECB) += aes_ecb.c
-srcs-$(CFG_CRYPTO_CBC) += aes_cbc.c
+# aes cbc cypher slows down RPMB operations, disable
+# srcs-$(CFG_CRYPTO_CBC) += aes_cbc.c
 srcs-$(CFG_CRYPTO_CTR) += aes_ctr.c
 endif
 ifeq ($(CFG_CRYPTO_DES),y)

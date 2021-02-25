@@ -120,7 +120,7 @@ static TEE_Result ltc_cbc_alloc_ctx(struct crypto_cipher_ctx **ctx_ret,
 	return TEE_SUCCESS;
 }
 
-#if defined(_CFG_CORE_LTC_AES) && !defined(CFG_CORE_SE05X)
+#if defined(_CFG_CORE_LTC_AES)
 TEE_Result crypto_aes_cbc_alloc_ctx(struct crypto_cipher_ctx **ctx)
 {
 	return ltc_cbc_alloc_ctx(ctx, find_cipher("aes"), false);
