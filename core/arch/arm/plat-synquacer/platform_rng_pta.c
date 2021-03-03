@@ -81,11 +81,10 @@
 #include <kernel/timer.h>
 #include <mm/core_memprot.h>
 #include <io.h>
-#include <string.h>
+#include <pta/rng.h>
 #include <rng_pta.h>
-#include <rng_pta_client.h>
-
-#define PTA_NAME "rng.pta"
+#include <platform_rng_pta.h>
+#include <string.h>
 
 #define THERMAL_SENSOR_BASE0		0x54190800
 #define THERMAL_SENSOR_OFFSET		0x80
@@ -249,8 +248,8 @@ void rng_collect_entropy(void)
 	thread_set_exceptions(exceptions);
 }
 
-static TEE_Result rng_get_entropy(uint32_t types,
-				  TEE_Param params[TEE_NUM_PARAMS])
+TEE_Result rng_get_entropy(uint32_t types,
+			   TEE_Param params[TEE_NUM_PARAMS])
 {
 	uint8_t *e = NULL;
 	uint32_t pool_size = 0, rq_size = 0;
@@ -309,8 +308,8 @@ exit:
 	return res;
 }
 
-static TEE_Result rng_get_info(uint32_t types,
-			       TEE_Param params[TEE_NUM_PARAMS])
+TEE_Result rng_get_info(uint32_t types,
+			TEE_Param params[TEE_NUM_PARAMS])
 {
 	if (types != TEE_PARAM_TYPES(TEE_PARAM_TYPE_VALUE_OUTPUT,
 				     TEE_PARAM_TYPE_NONE,
@@ -333,25 +332,3 @@ static TEE_Result rng_get_info(uint32_t types,
 
 	return TEE_SUCCESS;
 }
-
-static TEE_Result invoke_command(void *pSessionContext __unused,
-				 uint32_t nCommandID, uint32_t nParamTypes,
-				 TEE_Param pParams[TEE_NUM_PARAMS])
-{
-	FMSG("command entry point for pseudo-TA \"%s\"", PTA_NAME);
-
-	switch (nCommandID) {
-	case PTA_CMD_GET_ENTROPY:
-		return rng_get_entropy(nParamTypes, pParams);
-	case PTA_CMD_GET_RNG_INFO:
-		return rng_get_info(nParamTypes, pParams);
-	default:
-		break;
-	}
-
-	return TEE_ERROR_NOT_IMPLEMENTED;
-}
-
-pseudo_ta_register(.uuid = PTA_RNG_UUID, .name = PTA_NAME,
-		   .flags = PTA_DEFAULT_FLAGS | TA_FLAG_DEVICE_ENUM,
-		   .invoke_command_entry_point = invoke_command);

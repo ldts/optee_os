@@ -3,6 +3,7 @@ PLATFORM_FLAVOR ?= developerbox
 $(call force,CFG_SECURE_TIME_SOURCE_CNTPCT,y)
 $(call force,CFG_GIC,y)
 $(call force,CFG_PL011,y)
+$(call force,CFG_RNG_PTA,y)
 
 include core/arch/arm/cpu/cortex-armv8-0.mk
 $(call force,CFG_TEE_CORE_NB_CORE,24)
