@@ -11,6 +11,12 @@
 #include <ta_pub_key.h>
 
 /*
+ * Avoid using the HUK stub implementation for the platforms below as this will
+ * lead to using a non secure key.
+ */
+#if !defined(CFG_MX6) && !defined(CFG_MX7) && !defined(CFG_MX7ULP) && \
+	!defined(CFG_MX8M)
+/*
  * Override these in your platform code to really fetch device-unique
  * bits from e-fuses or whatever.
  *
@@ -22,6 +28,7 @@ __weak TEE_Result tee_otp_get_hw_unique_key(struct tee_hw_unique_key *hwkey)
 	memset(&hwkey->data[0], 0, sizeof(hwkey->data));
 	return TEE_SUCCESS;
 }
+#endif
 
 __weak int tee_otp_get_die_id(uint8_t *buffer, size_t len)
 {
