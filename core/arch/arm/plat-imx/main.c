@@ -126,6 +126,12 @@ const char *main_get_optee_exclusive_node_name(unsigned int i)
 		"/soc/bus@2200000/crypto@2280000",
 #endif
 #endif
+/* CFG_NXP_CAAM: required for CAAM_RNG and CAAM_HUK will need to use the JR */
+#if defined(CFG_NXP_CAAM)
+#if defined(CFG_MX8MM) || defined(CFG_MX8MQ) || defined(CFG_MX8MP)
+		"/soc/bus@30800000/crypto@30900000/jr@3000",
+#endif
+#endif
 		NULL,
 	};
 
