@@ -69,4 +69,18 @@
 #include <config/imx6sll.h>
 #endif
 
+/*
+ * Calculate Non Secure memory region, after Secure memory carved out.
+ * Assumption is memory for TEE is 32M
+ * Those defines are used to register dynamic shared memory
+ * Currently enable only mscale family.
+ */
+#if defined(CFG_MX8MQ) || defined(CFG_MX8MM) || defined(CFG_MX8MN) ||          \
+	defined(CFG_MX8MP)
+#define DRAM0_NSEC_BASE CFG_DRAM_BASE
+#define DRAM0_NSEC_SIZE (CFG_TZDRAM_START - CFG_DRAM_BASE)
+#define DRAM1_NSEC_BASE (CFG_TZDRAM_START + 0x2000000)
+#define DRAM1_NSEC_SIZE (CFG_DDR_SIZE - DRAM1_NSEC_BASE + CFG_DRAM_BASE)
+#endif
+
 #endif /*PLATFORM_CONFIG_H*/

@@ -100,8 +100,14 @@ register_phys_mem_pgdir(MEM_AREA_IO_SEC,
 			CORE_MMU_PGDIR_SIZE);
 #endif
 
+#ifdef DRAM0_NSEC_SIZE
+register_dynamic_shm(DRAM0_NSEC_BASE, DRAM0_NSEC_SIZE);
+#else
 register_dynamic_shm(CFG_NSEC_DDR_0_BASE, CFG_NSEC_DDR_0_SIZE);
-#if defined(CFG_NSEC_DDR_1_BASE) && defined(CFG_NSEC_DDR_1_SIZE)
+#endif
+#if defined DRAM1_NSEC_SIZE && ( DRAM1_NSEC_SIZE > 0 )
+register_dynamic_shm(DRAM1_NSEC_BASE, DRAM1_NSEC_SIZE);
+#elif defined(CFG_NSEC_DDR_1_BASE) && defined(CFG_NSEC_DDR_1_SIZE)
 register_dynamic_shm(CFG_NSEC_DDR_1_BASE, CFG_NSEC_DDR_1_SIZE);
 #endif
 
