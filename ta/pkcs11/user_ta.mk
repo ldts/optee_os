@@ -1,4 +1,4 @@
-user-ta-uuid := fd02c9da-306c-48c7-a49c-bbd827ae86ee
+user-ta-uuid := 7f10a757-4139-4eae-90c9-f2b2eb118139
 
 all: pkcs11-ta-verify-helpers
 

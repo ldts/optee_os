@@ -1,5 +1,5 @@
 # The UUID for the Trusted Application
-BINARY=fd02c9da-306c-48c7-a49c-bbd827ae86ee
+BINARY=7f10a757-4139-4eae-90c9-f2b2eb118139
 
 -include $(TA_DEV_KIT_DIR)/mk/ta_dev_kit.mk
 
