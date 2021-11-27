@@ -7,6 +7,7 @@
 #ifndef SE050_UTILS_H_
 #define SE050_UTILS_H_
 
+#include <crypto/crypto.h>
 #include <se050.h>
 #include <tee_api_types.h>
 
@@ -33,6 +34,7 @@ struct s050_scp_rotate_cmd {
 	((uint64_t)(((uint64_t)SE050_KEY_WATERMARK) << 32) + (x))
 
 sss_status_t se050_get_oid(uint32_t *val);
+sss_status_t se050_oid_from_key(struct bignum **p, uint32_t *oid);
 
 struct rsa_keypair;
 struct ecc_keypair;

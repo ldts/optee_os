@@ -552,6 +552,18 @@ static TEE_Result gen_keypair(struct ecc_keypair *key, size_t key_size __unused)
 	if (st != kStatus_SSS_Success)
 		return TEE_ERROR_BAD_PARAMETERS;
 
+	st = se050_oid_from_key(&key->d, &oid);
+	if (st != kStatus_SSS_Success)
+		return TEE_ERROR_BAD_PARAMETERS;
+
+	if (oid) {
+		st = sss_se05x_key_object_get_handle(&k_object, oid);
+		if (st != kStatus_SSS_Success)
+			return TEE_ERROR_BAD_PARAMETERS;
+
+		goto get_key;
+	}
+
 	st = se050_get_oid(&oid);
 	if (st != kStatus_SSS_Success)
 		return TEE_ERROR_GENERIC;
@@ -569,6 +581,7 @@ static TEE_Result gen_keypair(struct ecc_keypair *key, size_t key_size __unused)
 	if (st != kStatus_SSS_Success)
 		return TEE_ERROR_BAD_PARAMETERS;
 
+get_key:
 	bytes = sizeof(kf);
 	st = se050_key_store_get_ecc_key_bin(se050_kstore, &k_object, kf,
 					     &bytes);
