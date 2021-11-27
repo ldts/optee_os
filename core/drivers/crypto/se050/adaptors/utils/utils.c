@@ -108,6 +108,35 @@ sss_status_t se050_get_oid(uint32_t *val)
 	return generate_oid(val);
 }
 
+sss_status_t se050_oid_from_key(struct bignum **p, uint32_t *oid)
+{
+	char label[12] = { '\0' };
+
+	if (!*p || !oid) {
+		*oid = 0;
+		return kStatus_SSS_Success;
+	}
+
+	/* label is 11 bytes guaranteed by PKCS#11 TA */
+	memcpy(label, *p, 11);
+
+	if (memcmp(label, "SE_", 3)) {
+		/* not an SE_ request */
+		*oid = 0;
+		return kStatus_SSS_Success;
+	}
+
+	free(*p);
+
+	*oid = strtoul(label + 3, NULL, 16);
+	*p = crypto_bignum_allocate(4096);
+
+	if (!se050_key_exists(*oid, &se050_session->s_ctx))
+		return kStatus_SSS_Fail;
+
+	return kStatus_SSS_Success;
+}
+
 static uint32_t se050_key(uint64_t key)
 {
 	uint32_t oid = (uint32_t)key;
