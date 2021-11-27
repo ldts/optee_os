@@ -5,6 +5,7 @@
 
 #include <assert.h>
 #include <pkcs11_ta.h>
+#include <string.h>
 #include <tee_api_defines.h>
 #include <tee_internal_api.h>
 #include <tee_internal_api_extensions.h>
@@ -575,12 +576,15 @@ enum pkcs11_rc generate_ec_keys(struct pkcs11_attribute_head *proc_params,
 {
 	enum pkcs11_rc rc = PKCS11_CKR_GENERAL_ERROR;
 	void *a_ptr = NULL;
+	void *b_ptr = NULL;
 	uint32_t a_size = 0;
+	uint32_t b_size = 0;
 	uint32_t tee_size = 0;
 	uint32_t tee_curve = 0;
 	TEE_ObjectHandle tee_obj = TEE_HANDLE_NULL;
-	TEE_Attribute tee_key_attr[1] = { };
+	TEE_Attribute tee_key_attr[2] = { };
 	TEE_Result res = TEE_ERROR_GENERIC;
+	uint32_t tee_count = 0;
 
 	if (!proc_params || !*pub_head || !*priv_head)
 		return PKCS11_CKR_TEMPLATE_INCONSISTENT;
@@ -608,6 +612,23 @@ enum pkcs11_rc generate_ec_keys(struct pkcs11_attribute_head *proc_params,
 
 	TEE_InitValueAttribute(tee_key_attr, TEE_ATTR_ECC_CURVE, tee_curve, 0);
 
+	tee_count++;
+
+	b_size = 0;
+	rc = get_attribute_ptr(*pub_head, PKCS11_CKA_LABEL, &b_ptr, &b_size);
+	if (!rc && b_size >=3 && !memcmp(b_ptr, "SE_", 3)) {
+		if (b_size != 11) {
+			EMSG("SE_ identifier size invalid");
+			rc = PKCS11_CKR_ATTRIBUTE_TYPE_INVALID;
+			goto out;
+		}
+
+		TEE_InitRefAttribute(&tee_key_attr[tee_count],
+				     TEE_ATTR_ECC_PRIVATE_VALUE,
+				     b_ptr, b_size);
+		tee_count++;
+	}
+
 	/* Create an ECDSA TEE key: will match PKCS11 ECDSA and ECDH */
 	res = TEE_AllocateTransientObject(TEE_TYPE_ECDSA_KEYPAIR, tee_size,
 					  &tee_obj);
@@ -622,7 +643,7 @@ enum pkcs11_rc generate_ec_keys(struct pkcs11_attribute_head *proc_params,
 		goto out;
 	}
 
-	res = TEE_GenerateKey(tee_obj, tee_size, tee_key_attr, 1);
+	res = TEE_GenerateKey(tee_obj, tee_size, tee_key_attr, tee_count);
 	if (res) {
 		rc = tee2pkcs_error(res);
 		goto out;
