@@ -141,7 +141,7 @@ static const struct tee_cryp_obj_type_attrs tee_cryp_obj_rsa_keypair_attrs[] = {
 
 	{
 	.attr_id = TEE_ATTR_RSA_PRIVATE_EXPONENT,
-	.flags = TEE_TYPE_ATTR_REQUIRED,
+	.flags = TEE_TYPE_ATTR_REQUIRED | TEE_TYPE_ATTR_GEN_KEY_OPT,
 	.ops_index = ATTR_OPS_INDEX_BIGNUM,
 	RAW_DATA(struct rsa_keypair, d)
 	},
@@ -362,7 +362,7 @@ static const struct tee_cryp_obj_type_attrs tee_cryp_obj_ecc_pub_key_attrs[] = {
 static const struct tee_cryp_obj_type_attrs tee_cryp_obj_ecc_keypair_attrs[] = {
 	{
 	.attr_id = TEE_ATTR_ECC_PRIVATE_VALUE,
-	.flags = TEE_TYPE_ATTR_REQUIRED,
+	.flags = TEE_TYPE_ATTR_REQUIRED | TEE_TYPE_ATTR_GEN_KEY_OPT,
 	.ops_index = ATTR_OPS_INDEX_BIGNUM,
 	RAW_DATA(struct ecc_keypair, d)
 	},
@@ -1968,6 +1968,18 @@ static TEE_Result tee_svc_obj_generate_key_rsa(
 					     param_count);
 	if (res != TEE_SUCCESS)
 		return res;
+
+	if (get_attribute(o, type_props, TEE_ATTR_RSA_PRIVATE_EXPONENT)) {
+		size_t len = crypto_bignum_num_bytes(key->d);
+		uint8_t label[32];
+
+		if (!len || len > sizeof(label))
+			return TEE_ERROR_ITEM_NOT_FOUND;
+
+		crypto_bignum_bn2bin(key->d, label);
+		memcpy(key->d, label, len);
+	}
+
 	if (get_attribute(o, type_props, TEE_ATTR_RSA_PUBLIC_EXPONENT)) {
 		res = check_pub_rsa_key(key->e);
 		if (res)
@@ -2053,6 +2065,17 @@ static TEE_Result tee_svc_obj_generate_key_ecc(
 		return res;
 
 	tee_ecc_key = (struct ecc_keypair *)o->attr;
+
+	if (get_attribute(o, type_props, TEE_ATTR_ECC_PRIVATE_VALUE)) {
+		size_t len = crypto_bignum_num_bytes(tee_ecc_key->d);
+		uint8_t label[32];
+
+		if (!len || len > sizeof(label))
+			return TEE_ERROR_ITEM_NOT_FOUND;
+
+		crypto_bignum_bn2bin(tee_ecc_key->d, label);
+		memcpy(tee_ecc_key->d, label, len);
+	}
 
 	res = crypto_acipher_gen_ecc_key(tee_ecc_key, key_size);
 	if (res != TEE_SUCCESS)

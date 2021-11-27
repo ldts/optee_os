@@ -8,6 +8,7 @@
 #include <tee_api_defines.h>
 #include <tee_internal_api.h>
 #include <tee_internal_api_extensions.h>
+#include <string.h>
 
 #include "attributes.h"
 #include "object.h"
@@ -537,7 +538,7 @@ enum pkcs11_rc generate_rsa_keys(struct pkcs11_attribute_head *proc_params,
 	TEE_ObjectHandle tee_obj = TEE_HANDLE_NULL;
 	TEE_Result res = TEE_ERROR_GENERIC;
 	uint32_t modulus_bits = 0;
-	TEE_Attribute tee_attrs[1] = { };
+	TEE_Attribute tee_attrs[2] = { };
 	uint32_t tee_count = 0;
 
 	if (!proc_params || !*pub_head || !*priv_head)
@@ -558,6 +559,22 @@ enum pkcs11_rc generate_rsa_keys(struct pkcs11_attribute_head *proc_params,
 	if (rc == PKCS11_CKR_OK && a_ptr) {
 		TEE_InitRefAttribute(&tee_attrs[tee_count],
 				     TEE_ATTR_RSA_PUBLIC_EXPONENT,
+				     a_ptr, a_size);
+		tee_count++;
+	}
+
+	/* pass the label to the private exponent */
+	a_size = 0;
+	rc = get_attribute_ptr(*pub_head, PKCS11_CKA_LABEL, &a_ptr, &a_size);
+	if (!rc && a_size >= 3 && !memcmp(a_ptr, "SE_", 3)) {
+		if (a_size != 11) {
+			EMSG("SE_ identifier size invalid");
+			rc = PKCS11_CKR_ATTRIBUTE_TYPE_INVALID;
+			goto out;
+		}
+
+		TEE_InitRefAttribute(&tee_attrs[tee_count],
+				     TEE_ATTR_RSA_PRIVATE_EXPONENT,
 				     a_ptr, a_size);
 		tee_count++;
 	}
