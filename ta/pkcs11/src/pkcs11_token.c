@@ -281,8 +281,7 @@ static void set_token_description(struct pkcs11_slot_info *info)
 	res = TEE_GetPropertyAsUUID(TEE_PROPSET_TEE_IMPLEMENTATION,
 				    "gpd.tee.deviceID", &dev_id);
 	if (res == TEE_SUCCESS) {
-		n = snprintk(desc, sizeof(desc), PKCS11_SLOT_DESCRIPTION
-			     " - TEE UUID %pUl", (void *)&dev_id);
+		n = snprintk(desc, sizeof(desc), "%pUl", (void *)&dev_id);
 	} else {
 		n = snprintf(desc, sizeof(desc), PKCS11_SLOT_DESCRIPTION
 			     " - No TEE UUID");
