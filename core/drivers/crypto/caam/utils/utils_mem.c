@@ -33,15 +33,19 @@ static inline void touch_page(vaddr_t addr)
  * Allocate an area of given size in bytes. Add the memory allocator
  * information in the newly allocated area.
  *
- * @size   Size in bytes to allocate
+ * @size_in   Size in bytes to allocate
  * @type   Type of area to allocate (refer to MEM_TYPE_*)
  */
-static void *mem_alloc(size_t size, uint8_t type)
+static void *mem_alloc(size_t size_in, uint8_t type)
 {
 	void *ptr = NULL;
-	size_t alloc_size = size;
+	size_t alloc_size = size_in;
 
-	MEM_TRACE("alloc %zu bytes of type %" PRIu8, size, type);
+	MEM_TRACE("Requested alloc %zu bytes of type %" PRIu8, size_in, type);
+
+	/* Roundup needed to respect CAAM DMA behaviour */
+	if (type & MEM_TYPE_ALIGN)
+		alloc_size = ROUNDUP(size_in, CFG_CAAM_SIZE_ALIGN);
 
 	if (type & MEM_TYPE_ALIGN) {
 		size_t cacheline_size = dcache_get_line_size();
