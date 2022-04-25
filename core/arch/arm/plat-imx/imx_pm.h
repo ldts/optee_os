@@ -17,8 +17,27 @@
 #define SUSPEND_OCRAM_OFFSET		0x0
 #define LOWPOWER_IDLE_OCRAM_OFFSET	0xE00
 
+#define BUSFREQ_OCRAM_OFFSET		(LOWPOWER_IDLE_OCRAM_OFFSET + \
+					LOWPOWER_IDLE_OCRAM_SIZE)
+#define BUSFREQ_MAX_SIZE		(IRAM_TBL_OFFSET - BUSFREQ_OCRAM_OFFSET)
+
+/*
+ * Except i.MX6SX only 16KB ocram_s available, others use 16KB offset.
+ */
+#define IRAM_TBL_OFFSET			0x4000
+
 #ifndef __ASSEMBLER__
 #include <sm/sm.h>
+
+/**
+ * @brief   Definition of the struture given as first parameter to the
+ *          sm_pm_cpu_suspend assembly function. This parameter is the
+ *          argument of the device's power assembly function
+ */
+struct imx_pm_asm_arg {
+	paddr_t pa_addr;  /// Physical address of the pm block
+	void    *pm_info; /// Reference to the pm_info structure
+};
 
 /* The structure is used for suspend and low power idle */
 struct imx7_pm_info {

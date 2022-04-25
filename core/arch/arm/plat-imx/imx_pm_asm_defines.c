@@ -8,6 +8,13 @@
 
 DEFINES
 {
+	/* Definition of the Assembly function arguments */
+	DEFINE(PM_ASM_ARG_PA_ADDR_OFF,
+	       offsetof(struct imx_pm_asm_arg, pa_addr));
+	DEFINE(PM_ASM_ARG_PM_INFO_OFF,
+	       offsetof(struct imx_pm_asm_arg, pm_info));
+
+	/* Definition of the MX7 PM info structure offset */
 	DEFINE(PM_INFO_MX7_M4_RESERVE0_OFF,
 	       offsetof(struct imx7_pm_info, m4_reserve0));
 	DEFINE(PM_INFO_MX7_M4_RESERVE1_OFF,
