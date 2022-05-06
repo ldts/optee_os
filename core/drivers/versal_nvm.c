@@ -252,9 +252,9 @@ static TEE_Result prepare_cmd(struct ipi_cmd *cmd, enum versal_nvm_api_id efuse,
 {
 	size_t i = 0;
 
-	cmd->data[i++] = NVM_API_ID(efuse);
+	cmd->data[0] = NVM_API_ID(efuse);
 	for (i = 1; i < arg->len + 1; i++)
-		cmd->data[i] = arg->data[i];
+		cmd->data[i] = arg->data[i - 1];
 
 	if (!ibufs[0].p)
 		return TEE_SUCCESS;
