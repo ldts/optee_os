@@ -45,3 +45,6 @@ CFG_VERSAL_TRNG_DF_MUL    ?= 7
 
 # MBOX configuration
 CFG_VERSAL_MBOX_IPI_ID ?=3
+
+# Crypto
+CFG_VERSAL_CRYPTO_DRIVER ?= n
