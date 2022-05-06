@@ -72,6 +72,9 @@ static struct drvcrypt_ecc driver_ecc = {
 	.verify = NULL,
 };
 
+#define XSECURE_ECDSA_KAT_NIST_P384	0
+#define XSECURE_ECDSA_KAT_NIST_P521	2
+
 static TEE_Result ecc_init(void)
 {
 	TEE_Result ret = TEE_ERROR_GENERIC;
@@ -81,13 +84,13 @@ static TEE_Result ecc_init(void)
 
 	arg.len = 1;
 
-	arg.data[0] = TEE_ECC_CURVE_NIST_P384;
+	arg.data[0] = XSECURE_ECDSA_KAT_NIST_P384;
 	if (versal_crypto_request(ELLIPTIC_KAT, NULL, &arg)) {
 		EMSG("Versal KAG NIST_P384 failed");
 		return TEE_ERROR_GENERIC;
 	}
 
-	arg.data[0] = TEE_ECC_CURVE_NIST_P521;
+	arg.data[0] = XSECURE_ECDSA_KAT_NIST_P521;
 	if (versal_crypto_request(ELLIPTIC_KAT, NULL, &arg)) {
 		EMSG("Versal KAG NIST_P521 failed");
 		return TEE_ERROR_GENERIC;
@@ -111,4 +114,4 @@ static TEE_Result ecc_init(void)
 	return drvcrypt_register_ecc(&driver_ecc);
 }
 
-driver_init_late(ecc_init);
+driver_init(ecc_init);

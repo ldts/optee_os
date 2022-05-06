@@ -19,9 +19,10 @@ TEE_Result versal_crypto_request(enum versal_crypto_api id,
 	struct ipi_cmd cmd = { };
 	size_t i = 0;
 
-	cmd.data[i++] = CRYPTO_API_ID(id);
+	cmd.data[0] = CRYPTO_API_ID(id);
+
 	for (i = 1; i < arg->len + 1; i++)
-		cmd.data[i] = arg->data[i];
+		cmd.data[i] = arg->data[i - 1];
 
 	if (!ibufs)
 		goto notify;
