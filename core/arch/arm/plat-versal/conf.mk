@@ -32,3 +32,19 @@ $(call force,CFG_WITH_LPAE,y)
 else
 $(call force,CFG_ARM32_core,y)
 endif
+
+$(call force, CFG_VERSAL_RNG_DRV, y)
+$(call force, CFG_WITH_SOFTWARE_PRNG,n)
+$(call force, CFG_VERSAL_PM, y)
+$(call force, CFG_VERSAL_MBOX, y)
+$(call force, CFG_VERSAL_NVM, y)
+
+# TRNG configuration
+CFG_VERSAL_TRNG_SEED_LIFE ?= 3
+CFG_VERSAL_TRNG_DF_MUL    ?= 7
+
+# MBOX configuration
+CFG_VERSAL_MBOX_IPI_ID ?=3
+
+# Crypto
+CFG_VERSAL_CRYPTO_DRIVER ?= n
