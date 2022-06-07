@@ -58,8 +58,8 @@ srcs-$(CFG_ARM_SMCCC_TRNG) += smccc_trng.c
 srcs-$(CFG_VERSAL_RNG_DRV) += versal_trng.c
 srcs-$(CFG_VERSAL_PM) += versal_pm.c
 srcs-$(CFG_VERSAL_MBOX) += versal_mbox.c
-srcs-$(CFG_VERSAL_NVM) += versal_nvm.c versal_nvm_test.c
-srcs-$(CFG_VERSAL_PUF) += versal_puf.c versal_puf_test.c
+srcs-$(CFG_VERSAL_NVM) += versal_nvm.c
+srcs-$(CFG_VERSAL_PUF) += versal_puf.c
 srcs-$(CFG_ZYNQ_GPIO) += zynq_gpio.c zynq_gpio_test.c
 
 subdirs-y += crypto
