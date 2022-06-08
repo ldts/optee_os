@@ -166,7 +166,7 @@ static TEE_Result do_update_aad(struct drvcrypt_authenc_update_aad *dupdate)
 
 	versal_mbox_alloc(dupdate->aad.length, dupdate->aad.data, &p);
 
-	arg.data[0] = p.len;
+	arg.data[0] = (dupdate->aad.length % 16) ? p.alloc_len : p.len;
 	arg.dlen = 1;
 	arg.ibuf[0].buf = p.buf;
 	arg.ibuf[0].len = p.alloc_len;
