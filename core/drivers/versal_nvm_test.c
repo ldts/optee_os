@@ -88,21 +88,18 @@ static TEE_Result test_read_user_fuses(void)
 
 static TEE_Result test_write_user_fuses(void)
 {
+#if 0
 	/* the length of the source buffer must be cacheline aligned */
 	uint32_t fuses[4] = { 0xab123456, 0xbc123456, 0xcd123456, 0xde123456 };
 
-	if (versal_write_efuse_user(fuses, sizeof(fuses), 3 ,4))
-#if 0
+	if (versal_write_efuse_user(fuses, sizeof(fuses), 3, 4))
 		return TEE_ERROR_GENERIC;
-#else
-		return TEE_SUCCESS;
-	/**
-	 * We cant just write the efuse again and again everytime the test
-	 * is executed. Since this has been tested, it is ok to disable it
-	 * now and always return a pass result.
-	 */
-#endif
+
 	return TEE_SUCCESS;
+#else
+	return TEE_ERROR_NOT_IMPLEMENTED;
+#endif
+
 }
 
 static TEE_Result test_read_revoke_id(void)
@@ -241,7 +238,7 @@ static TEE_Result test_read_puf_sec_ctrl(void)
 static struct {
 	TEE_Result (*f)(void);
 	const char *name;
-	bool failed;
+	TEE_Result failed;
 } test[] = {
 	{ .f = test_write_user_fuses,       .name = STR(wr usr     ),},
 	{ .f = test_read_user_fuses,        .name = STR(rd usr     ),},
@@ -268,7 +265,7 @@ static TEE_Result versal_nvm_test(void)
 	do {
 		ret = (test[i].f)();
 		if (ret)
-			test[i].failed = true;
+			test[i].failed = ret;
 		i++;
 
 	} while (test[i].f);
@@ -277,8 +274,9 @@ static TEE_Result versal_nvm_test(void)
 
 	for (i = 0; i < ARRAY_SIZE(test) - 1; i++)
 		IMSG("---- %s:\t\t\t\t\t [%s]",
-		     test[i].name, test[i].failed ? "KO" : "OK");
-
+		     test[i].name, test[i].failed ?
+	                    (test[i].failed == TEE_ERROR_NOT_IMPLEMENTED ? "DISABLED" : "KO") :
+			    "OK");
 	return TEE_SUCCESS;;
 }
 driver_init(versal_nvm_test);
