@@ -15,7 +15,6 @@
 #include <tee_api_types.h>
 #include <utee_defines.h>
 
-
 #define PAYLOAD_ARG_CNT		6
 #define PM_SIP_SVC		0xc2000000
 

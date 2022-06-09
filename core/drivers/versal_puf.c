@@ -24,12 +24,12 @@ TEE_Result versal_puf_register(struct versal_puf_data *buf,
 			       struct versal_puf_cfg *cfg)
 {
 	struct versal_puf_data_req req __aligned_puf  = { };
+	struct versal_mbox_mem efuse_syn_data_addr = { };
 	struct versal_mbox_mem syndrome_data_addr = { };
+	struct versal_mbox_mem syndrome_addr = { };
+	struct versal_mbox_mem puf_id_addr = { };
 	struct versal_mbox_mem hash_addr = { };
 	struct versal_mbox_mem aux_addr = { };
-	struct versal_mbox_mem puf_id_addr = { };
-	struct versal_mbox_mem syndrome_addr = { };
-	struct versal_mbox_mem efuse_syn_data_addr = { };
 	TEE_Result ret = TEE_SUCCESS;
 	struct ipi_cmd arg = { };
 
@@ -80,10 +80,8 @@ TEE_Result versal_puf_register(struct versal_puf_data *buf,
 	memcpy(buf->puf_id, puf_id_addr.buf, sizeof(buf->puf_id));
 	memcpy(&buf->chash, hash_addr.buf, sizeof(buf->chash));
 	memcpy(&buf->aux, aux_addr.buf, sizeof(buf->aux));
-
 	memcpy(buf->efuse_syn_data, efuse_syn_data_addr.buf,
 	       sizeof(buf->efuse_syn_data));
-
 	memcpy(buf->syndrome_data, syndrome_data_addr.buf,
 	       sizeof(buf->syndrome_data));
 
@@ -101,22 +99,21 @@ TEE_Result versal_puf_regenerate(struct versal_puf_data *buf,
 				 struct versal_puf_cfg *cfg)
 {
 	struct versal_puf_data_req req __aligned_puf  = { };
+	struct versal_mbox_mem efuse_syn_data_addr = { };
 	struct versal_mbox_mem syndrome_data_addr = { };
+	struct versal_mbox_mem syndrome_addr = { };
+	struct versal_mbox_mem puf_id_addr = { };
 	struct versal_mbox_mem hash_addr = { };
 	struct versal_mbox_mem aux_addr = { };
-	struct versal_mbox_mem puf_id_addr = { };
-	struct versal_mbox_mem syndrome_addr = { };
-	struct versal_mbox_mem efuse_syn_data_addr = { };
+
 	TEE_Result ret = TEE_SUCCESS;
 	struct ipi_cmd arg = { };
 
 	versal_mbox_alloc(sizeof(buf->puf_id), buf->puf_id, &puf_id_addr);
 	versal_mbox_alloc(sizeof(buf->chash), &buf->chash, &hash_addr);
 	versal_mbox_alloc(sizeof(buf->aux), &buf->aux, &aux_addr);
-
 	versal_mbox_alloc(sizeof(buf->efuse_syn_data), buf->efuse_syn_data,
 			  &efuse_syn_data_addr);
-
 	versal_mbox_alloc(sizeof(buf->syndrome_data), buf->syndrome_data,
 			  &syndrome_data_addr);
 
