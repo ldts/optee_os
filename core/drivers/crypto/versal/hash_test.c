@@ -66,16 +66,83 @@ static TEE_Result test_sha3(void)
 		return TEE_ERROR_GENERIC;
 	}
 
+	/* release the SHA3 engine */
+	crypto_hash_free_ctx(ctx);
+
 	return TEE_SUCCESS;
 }
 
+static TEE_Result test_sha3_state(void)
+{
+	TEE_Result res = TEE_SUCCESS;
+	void *ctx1;
+	void *ctx2;
+	void *ctx3;
+
+	memset(out, 0, sizeof(out));
+
+	crypto_hash_alloc_ctx(&ctx1, TEE_ALG_SHA384);
+	crypto_hash_alloc_ctx(&ctx2, TEE_ALG_SHA384);
+	crypto_hash_alloc_ctx(&ctx3, TEE_ALG_SHA384);
+
+	crypto_hash_init(ctx1);
+	crypto_hash_init(ctx2);
+	crypto_hash_init(ctx3);
+
+	res = crypto_hash_update(ctx1, data, SHA3_INPUT_DATA_LEN);
+	if (res != TEE_SUCCESS) {
+		EMSG("%s %d", __func__, __LINE__);
+		return res;
+	}
+
+	res = crypto_hash_update(ctx2, data, SHA3_INPUT_DATA_LEN);
+	if (res != TEE_ERROR_BUSY) {
+		EMSG("%s %d", __func__, __LINE__);
+		return res;
+	}
+
+	crypto_hash_copy_state(ctx2, ctx1);
+	crypto_hash_free_ctx(ctx1);
+
+	/* ctx3 is not allowed to run */
+	res = crypto_hash_update(ctx3, data, SHA3_INPUT_DATA_LEN);
+	if (res != TEE_ERROR_BUSY) {
+		EMSG("%s %d", __func__, __LINE__);
+		return res;
+	}
+
+	/* ctx2 is a copye of ctx1 so it cant finalize */
+	res = crypto_hash_final(ctx2, out, SHA3_HASH_LEN);
+	if (res != TEE_SUCCESS) {
+		EMSG("%s %d", __func__, __LINE__);
+		return res;
+	}
+
+	if (memcmp(out, expected, sizeof(expected))) {
+		EMSG("%s %d", __func__, __LINE__);
+		return TEE_ERROR_GENERIC;
+	}
+
+	/* engine is still reserved by one of those context (ctx2) */
+	if (test_sha3() != TEE_ERROR_BUSY) {
+		EMSG("%s %d", __func__, __LINE__);
+		return TEE_ERROR_GENERIC;
+	}
+
+	crypto_hash_free_ctx(ctx2);
+	crypto_hash_free_ctx(ctx3);
+
+	/* check that the engine is now accessible */
+	return test_sha3();
+}
 
 static struct {
 	TEE_Result (*f)(void);
 	const char *name;
 	bool failed;
 } test[] = {
-	{ .f = test_sha3, .name = STR(hash sha384), },
+	{ .f = test_sha3,       .name = STR(hash sha384), },
+	{ .f = test_sha3_state, .name = STR(hash state) , },
 };
 
 static TEE_Result versal_sha3_test(void)
