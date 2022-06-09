@@ -22,6 +22,8 @@
 #define NVM_MODULE		11
 #define NVM_API_ID(_id) ((NVM_MODULE << NVM_MODULE_SHIFT) | (_id))
 
+#define __aligned_efuse			__aligned(CACHELINE_LEN)
+
 /*
  * Max size of the buffer needed for the remote processor to DMA efuse _data_
  * to/from
@@ -55,95 +57,6 @@ enum versal_nvm_api_id {
 	EFUSE_INVALID			= 23,
 };
 
-struct versal_efuse_glitch_cfg_bits {
-	uint8_t prgm_glitch;
-	uint8_t glitch_det_wr_lk;
-	uint32_t glitch_det_trim;
-	uint8_t gd_rom_monitor_en;
-	uint8_t gd_halt_boot_en;
-	uint8_t pad[56];
-} __packed;
-
-struct versal_efuse_aes_keys {
-	uint8_t prgm_aes_key;
-	uint8_t prgm_user_key0;
-	uint8_t prgm_user_key1;
-	uint32_t aes_key[8];
-	uint32_t user_key0[8];
-	uint32_t user_key1[8];
-	uint8_t pad[29];
-} __packed;
-
-struct versal_efuse_ppk_hash {
-	uint8_t prgm_ppk0_hash;
-	uint8_t prgm_ppk1_hash;
-	uint8_t prgm_ppk2_hash;
-	uint32_t ppk0_hash[8];
-	uint32_t ppk1_hash[8];
-	uint32_t ppk2_hash[8];
-	uint8_t pad[29];
-} __packed;
-
-struct versal_efuse_dec_only {
-	uint8_t prgm_dec_only;
-	uint8_t pad[63];
-} __packed;
-
-struct versal_efuse_revoke_ids {
-	uint8_t prgm_revoke_id;
-	uint32_t revoke_id[8];
-	uint8_t pad[31];
-} __packed;
-
-struct versal_efuse_offchip_ids {
-	uint8_t prgm_offchip_id;
-	uint32_t offchip_id[8];
-	uint8_t pad[31];
-} __packed;
-
-struct versal_efuse_user_data {
-	uint32_t start;
-	uint32_t num;
-	uint64_t addr;
-	uint8_t pad[48];
-} __packed;
-
-struct versal_efuse_puf_fuse {
-	uint8_t env_monitor_dis;
-	uint8_t prgm_puf_fuse;
-	uint32_t start;
-	uint32_t num;
-	uint64_t addr;
-	uint8_t pad[46];
-} __packed;
-
-struct versal_efuse_puf_hd {
-	struct versal_efuse_puf_sec_ctrl_bits puf_sec_ctrl_bits;
-	uint8_t prgm_puf_helper_data;
-	uint8_t env_monitor_dis;
-	uint32_t efuse_syn_data[127];
-	uint32_t chash;
-	uint32_t aux;
-	uint8_t pad[58];
-} __packed;
-
-struct versal_efuse_data {
-	uint64_t env_mon_dis_flag;
-	uint64_t aes_key_addr;
-	uint64_t ppk_hash_addr;
-	uint64_t dec_only_addr;
-	uint64_t sec_ctrl_addr;
-	uint64_t misc_ctrl_addr;
-	uint64_t revoke_id_addr;
-	uint64_t iv_addr;
-	uint64_t user_fuse_addr;
-	uint64_t glitch_cfg_addr;
-	uint64_t boot_env_ctrl_addr;
-	uint64_t misc1_ctrl_addr;
-	uint64_t offchip_id_addr;
-	uint8_t pad[24];
-} __packed;
-
 /* Helper read and write requests (not part of the protocol) */
 struct versal_nvm_read_req {
 	enum versal_nvm_api_id efuse_id;
@@ -154,34 +67,26 @@ struct versal_nvm_read_req {
 	struct ipi_buf ibuf[MAX_IPI_BUF];
 };
 
-enum versal_nvm_write_efuse_id {
-	EFUSE_WRITE_USER_FUSES,
-	EFUSE_WRITE_IVS_FUSES,
-	EFUSE_WRITE_REVOKE_PPK_FUSES,
-	EFUSE_WRITE_REVOKE_ID_FUSES,
-	EFUSE_WRITE_PUF_FUSES,
-	EFUSE_WRITE_INVALID = 0xffff,
+struct versal_bbram_data {
+	size_t aes_key_len;
+	uint32_t user_data;
 };
 
 struct versal_nvm_write_req {
+	enum versal_nvm_api_id efuse_id;
 	struct versal_efuse_data data;
-	enum versal_nvm_write_efuse_id id;
+	struct versal_bbram_data bbram;
 	struct ipi_buf ibuf[MAX_IPI_BUF];
 };
 
-struct cmd_args {
-	uint32_t data[3];
-	size_t len;
-};
-
 static TEE_Result prepare_cmd(struct ipi_cmd *cmd, enum versal_nvm_api_id efuse,
-			      struct ipi_buf *ibufs, struct cmd_args *arg)
+			      struct ipi_buf *ibufs, uint32_t *arg)
 {
 	size_t i = 0;
 
-	cmd->data[0] = NVM_API_ID(efuse);
-	for (i = 1; i < arg->len + 1; i++)
-		cmd->data[i] = arg->data[i - 1];
+	cmd->data[i++] = NVM_API_ID(efuse);
+	if (arg)
+		cmd->data[i++] = *arg;
 
 	if (!ibufs[0].buf)
 		return TEE_SUCCESS;
@@ -198,7 +103,7 @@ static TEE_Result prepare_cmd(struct ipi_cmd *cmd, enum versal_nvm_api_id efuse,
 }
 
 static TEE_Result efuse_req(enum versal_nvm_api_id efuse, struct ipi_buf *ibufs,
-			    struct cmd_args *arg)
+			    uint32_t *arg)
 {
 	TEE_Result ret = TEE_SUCCESS;
 	struct ipi_cmd cmd = { };
@@ -216,7 +121,8 @@ static TEE_Result efuse_req(enum versal_nvm_api_id efuse, struct ipi_buf *ibufs,
 
 static TEE_Result versal_nvm_read(struct versal_nvm_read_req *req)
 {
-	struct cmd_args args = { };
+	uint32_t *arg = NULL;
+	uint32_t val = 0;
 
 	if (!req)
 		return TEE_ERROR_GENERIC;
@@ -229,60 +135,57 @@ static TEE_Result versal_nvm_read(struct versal_nvm_read_req *req)
 	case EFUSE_READ_SEC_CTRL:
 	case EFUSE_READ_MISC_CTRL:
 	case EFUSE_READ_SEC_MISC1:
-	case BBRAM_READ_USER_DATA:
 	case EFUSE_READ_USER_FUSES:
 	case EFUSE_READ_PUF_USER_FUSES:
 	case EFUSE_READ_PUF:
 		break;
-	case BBRAM_ZEROIZE:
-	case BBRAM_LOCK_WRITE_USER_DATA:
-		if (req->ibuf[0].buf)
-			return TEE_ERROR_GENERIC;
-		break;
 	case EFUSE_READ_OFFCHIP_REVOCATION_ID:
-		args.data[0] = req->offchip_id;
-		args.len = 1;
+		val = req->offchip_id;
+		arg = &val;
 		break;
 	case EFUSE_READ_REVOCATION_ID:
-		args.data[0] = req->revocation_id;
-		args.len = 1;
+		val = req->revocation_id;
+		arg = &val;
 		break;
 	case EFUSE_READ_IV:
-		args.data[0] = req->iv_type;
-		args.len = 1;
+		val = req->iv_type;
+		arg = &val;
 		break;
 	case EFUSE_READ_PPK_HASH:
-		args.data[0] = req->ppk_type;
-		args.len = 1;
+		val = req->ppk_type;
+		arg = &val;
+		break;
+	case BBRAM_READ_USER_DATA:
 		break;
 	default:
 		return TEE_ERROR_GENERIC;
 	}
 
-	return efuse_req(req->efuse_id, req->ibuf, &args);
+	return efuse_req(req->efuse_id, req->ibuf, arg);
 }
 
 static TEE_Result versal_nvm_write(struct versal_nvm_write_req *req)
 {
-	enum versal_nvm_api_id efuse_id = EFUSE_INVALID;
-	struct cmd_args args = { };
+	uint32_t *arg = NULL;
+	uint32_t val = 0;
 
-	switch (req->id) {
-	case EFUSE_WRITE_USER_FUSES:
-	case EFUSE_WRITE_IVS_FUSES:
-	case EFUSE_WRITE_REVOKE_PPK_FUSES:
-	case EFUSE_WRITE_REVOKE_ID_FUSES:
-	case EFUSE_WRITE_PUF_FUSES:
-		efuse_id = EFUSE_WRITE;
+	switch (req->efuse_id) {
+	case BBRAM_WRITE_AES_KEY:
+		val = req->bbram.aes_key_len;
+		arg = &val;
+		break;
+	case BBRAM_WRITE_USER_DATA:
+		val = req->bbram.user_data;
+		arg = &val;
 		break;
 	default:
 		return TEE_ERROR_GENERIC;
 	}
 
-	return efuse_req(efuse_id, req->ibuf, &args);
+	return efuse_req(req->efuse_id, req->ibuf, arg);
 }
 
-TEE_Result versal_read_efuse_dna(uint32_t *buf, size_t len)
+static TEE_Result efuse_read_dna(uint32_t *buf, size_t len)
 {
 	uint8_t lbuf[1024] __aligned_efuse = { 0 };
 	struct versal_nvm_read_req req = {
@@ -303,8 +206,8 @@ TEE_Result versal_read_efuse_dna(uint32_t *buf, size_t len)
 	return TEE_SUCCESS;
 }
 
-TEE_Result versal_read_efuse_user(uint32_t *buf, size_t len, uint32_t first,
-				  size_t num)
+static TEE_Result efuse_read_user_data(uint32_t *buf, size_t len,
+				       uint32_t first, size_t num)
 {
 	uint8_t lbuf[1024] __aligned_efuse = { 0 };
 	struct versal_efuse_user_data cfg __aligned_efuse = {
@@ -334,7 +237,7 @@ TEE_Result versal_read_efuse_user(uint32_t *buf, size_t len, uint32_t first,
 	return TEE_SUCCESS;
 }
 
-TEE_Result versal_read_efuse_iv(uint32_t *buf, size_t len,
+static TEE_Result efuse_read_iv(uint32_t *buf, size_t len,
 				enum versal_nvm_iv_type type)
 {
 	uint8_t lbuf[1024] __aligned_efuse = { 0 };
@@ -357,7 +260,7 @@ TEE_Result versal_read_efuse_iv(uint32_t *buf, size_t len,
 	return TEE_SUCCESS;
 }
 
-TEE_Result versal_read_efuse_ppk(uint32_t *buf, size_t len,
+static TEE_Result efuse_read_ppk(uint32_t *buf, size_t len,
 				 enum versal_nvm_ppk_type type)
 {
 	uint8_t lbuf[1024]__aligned_efuse = { 0 };
@@ -379,8 +282,8 @@ TEE_Result versal_read_efuse_ppk(uint32_t *buf, size_t len,
 	return TEE_SUCCESS;
 }
 
-TEE_Result versal_write_efuse_user(uint32_t *buf, size_t len, uint32_t first,
-				   size_t num)
+static TEE_Result efuse_write_user_data(uint32_t *buf, size_t len,
+					uint32_t first, size_t num)
 {
 	uint32_t lbuf[EFUSE_MAX_USER_FUSES] __aligned_efuse = { 0 };
 	struct versal_efuse_user_data cfg __aligned_efuse = {
@@ -391,19 +294,17 @@ TEE_Result versal_write_efuse_user(uint32_t *buf, size_t len, uint32_t first,
 	struct versal_nvm_write_req req __aligned_efuse = {
 		.data.env_mon_dis_flag = 1,
 		.data.user_fuse_addr = (uintptr_t)&cfg,
-		.id = EFUSE_WRITE_USER_FUSES,
+		.efuse_id = EFUSE_WRITE,
 	};
 	size_t i = 0;
 
 	if (first + num > EFUSE_MAX_USER_FUSES || len  < num * sizeof(uint32_t))
 		return TEE_ERROR_BAD_PARAMETERS;
 
-	/* Update the command buffers with physical addresses */
 	req.data.user_fuse_addr = (paddr_t)
 				  virt_to_phys((void *)req.data.user_fuse_addr);
 	cfg.addr = (paddr_t)virt_to_phys(lbuf);
 
-	/* Request cache management */
 	req.ibuf[0].buf = &req.data;
 	req.ibuf[0].len = sizeof(req.data);
 	req.ibuf[1].buf = &cfg;
@@ -411,18 +312,17 @@ TEE_Result versal_write_efuse_user(uint32_t *buf, size_t len, uint32_t first,
 	req.ibuf[2].buf = lbuf;
 	req.ibuf[2].len = sizeof(lbuf);
 
-	/* Prepare fuses to write with some random data */
 	for (i = 0; i < cfg.num; i++)
 		lbuf[i] = buf[i];
 
 	return versal_nvm_write(&req);
 }
 
-TEE_Result versal_write_efuse_iv(struct versal_efuse_ivs *p)
+static TEE_Result efuse_write_iv(struct versal_efuse_ivs *p)
 {
 	struct versal_efuse_ivs cfg __aligned_efuse = { };
 	struct versal_nvm_write_req req __aligned_efuse = {
-		.id = EFUSE_WRITE_IVS_FUSES,
+		.efuse_id = EFUSE_WRITE,
 		.data.env_mon_dis_flag = 1,
 		.data.iv_addr = (uintptr_t)&cfg,
 	};
@@ -436,11 +336,11 @@ TEE_Result versal_write_efuse_iv(struct versal_efuse_ivs *p)
 	return versal_nvm_write(&req);
 }
 
-TEE_Result versal_write_efuse_revoke_ppk(enum versal_nvm_ppk_type type)
+static TEE_Result efuse_revoke_ppk(enum versal_nvm_ppk_type type)
 {
 	struct versal_efuse_misc_ctrl_bits cfg __aligned_efuse = { };
 	struct versal_nvm_write_req req  __aligned_efuse= {
-		.id = EFUSE_WRITE_REVOKE_PPK_FUSES,
+		.efuse_id = EFUSE_WRITE,
 		.data.misc_ctrl_addr = (uintptr_t)&cfg,
 		.data.env_mon_dis_flag = 1,
 	};
@@ -462,11 +362,11 @@ TEE_Result versal_write_efuse_revoke_ppk(enum versal_nvm_ppk_type type)
 	return versal_nvm_write(&req);
 }
 
-TEE_Result versal_write_efuse_revoke_id(uint32_t id)
+static TEE_Result efuse_revoke_id(uint32_t id)
 {
 	struct versal_efuse_revoke_ids cfg __aligned_efuse = { };
 	struct versal_nvm_write_req req __aligned_efuse = {
-		.id = EFUSE_WRITE_REVOKE_ID_FUSES,
+		.efuse_id = EFUSE_WRITE,
 		.data.misc_ctrl_addr = (uintptr_t)&cfg,
 		.data.env_mon_dis_flag = 1,
 	};
@@ -485,7 +385,7 @@ TEE_Result versal_write_efuse_revoke_id(uint32_t id)
 	return versal_nvm_write(&req);
 }
 
-TEE_Result versal_read_efuse_revoke_id(uint32_t *buf, size_t len,
+static TEE_Result efuse_read_revoke_id(uint32_t *buf, size_t len,
 				       enum versal_nvm_revocation_id id)
 {
 	uint8_t lbuf[1024]__aligned_efuse = { 0 };
@@ -508,7 +408,7 @@ TEE_Result versal_read_efuse_revoke_id(uint32_t *buf, size_t len,
 	return TEE_SUCCESS;
 }
 
-TEE_Result versal_read_efuse_misc_ctrl(struct versal_efuse_misc_ctrl_bits *buf)
+static TEE_Result efuse_read_misc_ctrl(struct versal_efuse_misc_ctrl_bits *buf)
 {
 	uint8_t lbuf[1024]__aligned_efuse = { 0 };
 	struct versal_nvm_read_req req = {
@@ -526,7 +426,7 @@ TEE_Result versal_read_efuse_misc_ctrl(struct versal_efuse_misc_ctrl_bits *buf)
 	return TEE_SUCCESS;
 }
 
-TEE_Result versal_read_efuse_sec_ctrl(struct versal_efuse_sec_ctrl_bits *buf)
+static TEE_Result efuse_read_sec_ctrl(struct versal_efuse_sec_ctrl_bits *buf)
 {
 	uint8_t lbuf[EFUSE_MAX_LEN]__aligned_efuse = { 0 };
 	struct versal_nvm_read_req req = {
@@ -544,7 +444,7 @@ TEE_Result versal_read_efuse_sec_ctrl(struct versal_efuse_sec_ctrl_bits *buf)
 	return TEE_SUCCESS;
 }
 
-TEE_Result versal_read_efuse_sec_misc1(struct versal_efuse_sec_misc1_bits *buf)
+static TEE_Result efuse_read_sec_misc1(struct versal_efuse_sec_misc1_bits *buf)
 {
 	uint8_t lbuf[1024]__aligned_efuse = { 0 };
 	struct versal_nvm_read_req req = {
@@ -562,7 +462,7 @@ TEE_Result versal_read_efuse_sec_misc1(struct versal_efuse_sec_misc1_bits *buf)
 	return TEE_SUCCESS;
 }
 
-TEE_Result versal_read_efuse_boot_env_ctrl(struct
+static TEE_Result efuse_read_boot_env_ctrl(struct
 					   versal_efuse_boot_env_ctrl_bits *buf)
 {
 	uint8_t lbuf[1024]__aligned_efuse = { 0 };
@@ -581,7 +481,7 @@ TEE_Result versal_read_efuse_boot_env_ctrl(struct
 	return TEE_SUCCESS;
 }
 
-TEE_Result versal_read_efuse_offchip_revoke_id(uint32_t *buf, size_t len,
+static TEE_Result efuse_read_offchip_revoke_id(uint32_t *buf, size_t len,
 					       enum versal_nvm_offchip_id id)
 {
 	uint8_t lbuf[1024]__aligned_efuse = { 0 };
@@ -603,7 +503,7 @@ TEE_Result versal_read_efuse_offchip_revoke_id(uint32_t *buf, size_t len,
 	return TEE_SUCCESS;
 }
 
-TEE_Result versal_read_efuse_dec_only(uint32_t *buf, size_t len)
+static TEE_Result efuse_read_dec_only(uint32_t *buf, size_t len)
 {
 	uint8_t lbuf[1024]__aligned_efuse = { 0 };
 	struct versal_nvm_read_req req = {
@@ -624,7 +524,7 @@ TEE_Result versal_read_efuse_dec_only(uint32_t *buf, size_t len)
 	return TEE_SUCCESS;
 }
 
-TEE_Result versal_read_efuse_puf_sec_ctrl(struct
+static TEE_Result efuse_read_puf_sec_ctrl(struct
 					  versal_efuse_puf_sec_ctrl_bits *buf)
 {
 	uint8_t lbuf[1024]__aligned_efuse = { 0 };
@@ -643,7 +543,7 @@ TEE_Result versal_read_efuse_puf_sec_ctrl(struct
 	return TEE_SUCCESS;
 }
 
-TEE_Result versal_read_efuse_puf(struct versal_efuse_puf_header *buf)
+static TEE_Result efuse_read_puf(struct versal_efuse_puf_header *buf)
 {
 	uint8_t lbuf[1024]__aligned_efuse = { 0 };
 	struct versal_nvm_read_req req = {
@@ -663,11 +563,11 @@ TEE_Result versal_read_efuse_puf(struct versal_efuse_puf_header *buf)
 	return TEE_SUCCESS;
 }
 
-TEE_Result versal_write_efuse_puf(struct versal_efuse_puf_header *buf)
+static TEE_Result efuse_write_puf(struct versal_efuse_puf_header *buf)
 {
 	struct versal_efuse_puf_header cfg __aligned_efuse = { };
-	struct versal_nvm_write_req req __aligned_efuse = {
-		.id = EFUSE_WRITE_PUF_FUSES,
+	struct versal_nvm_write_req req = {
+		.efuse_id = EFUSE_WRITE_PUF,
 	};
 
 	memcpy(&cfg, buf, sizeof(*buf));
@@ -680,3 +580,136 @@ TEE_Result versal_write_efuse_puf(struct versal_efuse_puf_header *buf)
 
 	return TEE_SUCCESS;
 }
+
+static TEE_Result bbram_write_aes_key(uint8_t *key, size_t len)
+{
+	uint8_t lbuf[1024]__aligned_efuse = { 0 };
+	struct versal_nvm_write_req req = {
+		.efuse_id = BBRAM_WRITE_AES_KEY,
+		.bbram.aes_key_len = len,
+	};
+
+	if (len != 32)
+		return TEE_ERROR_BAD_PARAMETERS;
+
+	memcpy(lbuf, key, len);
+
+	req.ibuf[0].buf = &lbuf;
+	req.ibuf[0].len = sizeof(lbuf);
+
+	if (versal_nvm_write(&req))
+		return TEE_ERROR_GENERIC;
+
+	return TEE_SUCCESS;
+}
+
+static TEE_Result bbram_zeroize(void)
+{
+	struct versal_nvm_write_req req  = {
+		.efuse_id = BBRAM_ZEROIZE,
+	};
+
+	if (versal_nvm_write(&req))
+		return TEE_ERROR_GENERIC;
+
+	return TEE_SUCCESS;
+}
+
+static TEE_Result bbram_write_user_data(uint32_t data)
+{
+	struct versal_nvm_write_req req = {
+		.efuse_id = BBRAM_WRITE_USER_DATA,
+		.bbram.user_data = data,
+	};
+
+	if (versal_nvm_write(&req))
+		return TEE_ERROR_GENERIC;
+
+	return TEE_SUCCESS;
+}
+
+static TEE_Result bbram_read_user_data(uint32_t *data)
+{
+	uint8_t lbuf[1024]__aligned_efuse = { 0 };
+	struct versal_nvm_read_req req = {
+		.efuse_id = BBRAM_READ_USER_DATA,
+	};
+
+	req.ibuf[0].buf = &lbuf;
+	req.ibuf[0].len = sizeof(lbuf);
+
+	if (versal_nvm_read(&req))
+		return TEE_ERROR_GENERIC;
+
+	memcpy(data, lbuf, sizeof(*data));
+
+	return TEE_SUCCESS;
+}
+
+static TEE_Result bbram_lock_write_user_data(void)
+{
+	struct versal_nvm_write_req req  = {
+		.efuse_id = BBRAM_LOCK_WRITE_USER_DATA,
+	};
+
+	if (versal_nvm_write(&req))
+		return TEE_ERROR_GENERIC;
+
+	return TEE_SUCCESS;
+}
+
+static struct versal_bbram_read_ops bbram_read_ops = {
+	.user_data = bbram_read_user_data,
+};
+
+static struct versal_bbram_write_ops bbram_write_ops = {
+	.lock_write_user_data = bbram_lock_write_user_data,
+	.user_data = bbram_write_user_data,
+	.aes_key = bbram_write_aes_key,
+	.zeroize = bbram_zeroize,
+};
+
+static struct versal_efuse_write_ops efuse_write_ops = {
+	.user_data = efuse_write_user_data,
+	.revoke_ppk = efuse_revoke_ppk,
+	.revoke_id = efuse_revoke_id,
+	.puf = efuse_write_puf,
+	.iv = efuse_write_iv,
+};
+
+static struct versal_efuse_read_ops efuse_read_ops = {
+	.offchip_revoke_id = efuse_read_offchip_revoke_id,
+	.boot_env_ctrl = efuse_read_boot_env_ctrl,
+	.puf_sec_ctrl = efuse_read_puf_sec_ctrl,
+	.revoke_id = efuse_read_revoke_id,
+	.user_data = efuse_read_user_data,
+	.misc_ctrl = efuse_read_misc_ctrl,
+	.sec_misc1 = efuse_read_sec_misc1,
+	.dec_only = efuse_read_dec_only,
+	.sec_ctrl = efuse_read_sec_ctrl,
+	.ppk = efuse_read_ppk,
+	.dna = efuse_read_dna,
+	.puf = efuse_read_puf,
+	.iv = efuse_read_iv,
+};
+
+struct versal_efuse_ops versal_efuse = {
+	.write = &efuse_write_ops,
+	.read = &efuse_read_ops,
+};
+
+struct versal_bbram_ops versal_bbram = {
+	.write = &bbram_write_ops,
+	.read = &bbram_read_ops,
+};
+
+struct versal_efuse_ops const *versal_get_efuse_ops(void)
+{
+	return &versal_efuse;
+}
+
+struct versal_bbram_ops const *versal_get_bbram_ops(void)
+{
+	return &versal_bbram;
+}
+
