@@ -55,6 +55,9 @@ static TEE_Result do_encrypt(struct drvcrypt_rsa_ed *rsa_data)
 	TEE_Result ret = TEE_SUCCESS;
 	struct cmd_args arg = { };
 
+	if (rsa_data->key.n_size == 128)
+		return TEE_ERROR_NOT_IMPLEMENTED;
+
 	versal_mbox_alloc(512 + crypto_bignum_num_bytes(p->e), NULL, &key);
 	crypto_bignum_bn2bin_eswap(p->n, key.buf);
 	crypto_bignum_bn2bin_eswap(p->e, (uint8_t *)key.buf + 512);
@@ -104,6 +107,9 @@ static TEE_Result do_decrypt(struct drvcrypt_rsa_ed *rsa_data)
 	struct versal_mbox_mem msg = { };
 	TEE_Result ret = TEE_SUCCESS;
 	struct cmd_args arg = { };
+
+	if (rsa_data->key.n_size == 128)
+		return TEE_ERROR_NOT_IMPLEMENTED;
 
 	versal_mbox_alloc(512 + crypto_bignum_num_bytes(p->d), NULL, &key);
 	crypto_bignum_bn2bin_eswap(p->n, key.buf);
