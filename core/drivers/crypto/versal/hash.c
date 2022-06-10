@@ -16,24 +16,30 @@
 
 #include "ipi.h"
 
+/* single engine */
+struct mutex lock = MUTEX_INITIALIZER;
+
 #define FIRST_PACKET	BIT(30)
 #define NEXT_PACKET	BIT(31)
 
-static struct hash_user {
-	struct refcount refcnt;
-	unsigned int lock;
-	uint64_t owner;
-} user;
+enum versal_sha3_state {
+	SHA3_STNDBY = 0, SHA3_INIT, SHA3_RUN
+};
 
-enum versal_sha3_state { SHA3_STNDBY = 0, SHA3_INIT , SHA3_RUN };
+struct update_request {
+	uint8_t *data;
+	size_t len;
+	STAILQ_ENTRY(update_request) link;
+};
 
 struct versal_hash_ctx {
 	struct crypto_hash_ctx hash_ctx;
 	enum versal_sha3_state state;
-	uint64_t id;
+	STAILQ_HEAD(update_request_list, update_request) req_list;
 };
 
 static const struct crypto_hash_ops versal_ops;
+
 static struct versal_hash_ctx* to_versal_ctx(struct crypto_hash_ctx *ctx)
 {
 	assert(ctx && ctx->ops == &versal_ops);
@@ -54,29 +60,39 @@ static TEE_Result do_hash_init(struct crypto_hash_ctx *ctx)
 }
 
 static TEE_Result do_hash_update(struct crypto_hash_ctx *ctx,
-				 const uint8_t *data, size_t len)
+			      const uint8_t *data, size_t len)
 {
 	struct versal_hash_ctx *c = to_versal_ctx(ctx);
+	struct update_request *req = NULL;
+
+	/* The engine does not have the concept of context, so all update
+	 * requests will be queued and processed at the final stage
+	 */
+	req = malloc(sizeof(*req));
+	if (!req)
+		return TEE_ERROR_OUT_OF_MEMORY;
+
+	req->data = malloc(len);
+	if (!req->data) {
+		free(req);
+		return TEE_ERROR_OUT_OF_MEMORY;
+	}
+
+	req->len = len;
+	memcpy(req->data, data, req->len);
+	STAILQ_INSERT_TAIL(&c->req_list, req, link);
+
+	return TEE_SUCCESS;
+}
+
+static TEE_Result hash_update(struct crypto_hash_ctx *ctx,
+			      const uint8_t *data, size_t len)
+{
+	struct versal_hash_ctx *c = to_versal_ctx(ctx);
+	TEE_Result ret = TEE_SUCCESS;
 	struct versal_mbox_mem p = { };
 	struct cmd_args arg = { };
-	uint32_t exceptions = 0;
 	uint32_t init_mask = 0;
-	TEE_Result ret = TEE_SUCCESS;
-
-	if (c->state == SHA3_STNDBY)
-		return TEE_ERROR_GENERIC;
-
-	exceptions = cpu_spin_lock_xsave(&user.lock);
-	if (refcount_val(&user.refcnt)) {
-		if (user.owner != c->id) {
-			cpu_spin_unlock_xrestore(&user.lock, exceptions);
-			return TEE_ERROR_BUSY;
-		}
-	} else {
-		refcount_set(&user.refcnt, 1);
-		user.owner = c->id;
-	}
-	cpu_spin_unlock_xrestore(&user.lock, exceptions);
 
 	if (c->state == SHA3_INIT)
 		init_mask = FIRST_PACKET;
@@ -90,9 +106,8 @@ static TEE_Result do_hash_update(struct crypto_hash_ctx *ctx,
 
 	if (versal_crypto_request(SHA3_UPDATE, &arg))
 		ret = TEE_ERROR_GENERIC;
-	else {
+	else
 		c->state = SHA3_RUN;
-	}
 
 	free(p.buf);
 
@@ -103,28 +118,29 @@ static TEE_Result do_hash_final(struct crypto_hash_ctx *ctx,
 				uint8_t *digest, size_t len)
 {
 	struct versal_hash_ctx *c = to_versal_ctx(ctx);
+	struct update_request *req = NULL;
 	struct versal_mbox_mem p = { };
 	TEE_Result ret = TEE_SUCCESS;
 	struct cmd_args arg = { };
-	uint32_t exceptions = 0;
 
 	if (c->state == SHA3_STNDBY)
 		return TEE_ERROR_GENERIC;
 
-	exceptions = cpu_spin_lock_xsave(&user.lock);
-	if (refcount_val(&user.refcnt)) {
-		if (user.owner != c->id) {
-			cpu_spin_unlock_xrestore(&user.lock, exceptions);
-			return TEE_ERROR_BUSY;
+	/* Book the engine */
+	mutex_lock(&lock);
+	STAILQ_FOREACH(req, &c->req_list, link) {
+		if (hash_update(ctx, req->data, req->len)) {
+			/* Release the engine */
+			mutex_unlock(&lock);
+			return TEE_ERROR_GENERIC;
 		}
-	} else {
-		refcount_set(&user.refcnt, 1);
-		user.owner = c->id;
+
+		STAILQ_REMOVE(&c->req_list, req, update_request, link);
+		free(req->data);
+		free(req);
 	}
-	cpu_spin_unlock_xrestore(&user.lock, exceptions);
 
 	versal_mbox_alloc(len, NULL, &p);
-
 	arg.ibuf[0].buf = p.buf;
 	arg.ibuf[0].len = p.alloc_len;
 
@@ -132,6 +148,9 @@ static TEE_Result do_hash_final(struct crypto_hash_ctx *ctx,
 		ret = TEE_ERROR_GENERIC;
 	else
 		c->state = SHA3_STNDBY;
+
+	/* Release the engine*/
+	mutex_unlock(&lock);
 
 	memcpy(digest, p.buf, p.len);
 	free(p.buf);
@@ -144,35 +163,43 @@ static void do_hash_copy_state(struct crypto_hash_ctx *dst_ctx,
 {
 	struct versal_hash_ctx *src_hctx = NULL;
 	struct versal_hash_ctx *dst_hctx = NULL;
-	uint32_t exceptions = 0;
+	struct update_request *src_req = NULL;
+	struct update_request *dst_req = NULL;
 
 	src_hctx = container_of(src_ctx, struct versal_hash_ctx, hash_ctx);
 	dst_hctx = container_of(dst_ctx, struct versal_hash_ctx, hash_ctx);
 
-	memcpy(dst_hctx, src_hctx, sizeof(*dst_hctx));
+	dst_hctx->hash_ctx = src_hctx->hash_ctx;
+	dst_hctx->state = src_hctx->state;
 
-	exceptions = cpu_spin_lock_xsave(&user.lock);
-	if (user.owner == src_hctx->id)
-		refcount_inc(&user.refcnt);
+	/* duplicate the queue requests */
+	STAILQ_FOREACH(src_req, &src_hctx->req_list, link) {
+		dst_req = malloc(sizeof(*dst_req));
+		if (!dst_req)
+			panic();
+		dst_req->len = src_req->len;
 
-	cpu_spin_unlock_xrestore(&user.lock, exceptions);
+		dst_req->data = malloc(dst_req->len);
+		if (!dst_req->data)
+			panic();
 
+		memcpy(dst_req->data, src_req->data, dst_req->len);
+		STAILQ_INSERT_TAIL(&dst_hctx->req_list, dst_req, link);
+	}
 }
 
 static void do_hash_free(struct crypto_hash_ctx *ctx)
 {
 	struct versal_hash_ctx *hctx = NULL;
-	uint32_t exceptions = 0;
+	struct update_request *req = NULL;
 
 	hctx = container_of(ctx, struct versal_hash_ctx, hash_ctx);
 
-	exceptions = cpu_spin_lock_xsave(&user.lock);
-	if (user.owner == hctx->id) {
-		if (refcount_dec(&user.refcnt))
-			user.owner = 0;
+	/* Requests were pushed but never finalized */
+	STAILQ_FOREACH(req, &hctx->req_list, link) {
+		free(req->data);
+		free(req);
 	}
-	cpu_spin_unlock_xrestore(&user.lock, exceptions);
-
 	free(hctx);
 }
 
@@ -188,8 +215,7 @@ static TEE_Result versal_hash_alloc(struct crypto_hash_ctx **ctx,
 	if (!vctx)
 		return TEE_ERROR_OUT_OF_MEMORY;
 
-	crypto_rng_read(&vctx->id, sizeof(vctx->id));
-
+	STAILQ_INIT(&vctx->req_list);
 	vctx->hash_ctx.ops = &versal_ops;
 	*ctx = &vctx->hash_ctx;
 
@@ -203,12 +229,6 @@ static const struct crypto_hash_ops versal_ops = {
 	.final = do_hash_final,
 	.init = do_hash_init,
 };
-
-/* Once the SHA3 engine is running, no other operation is allowed until
- * the context has been released (free_ctx)
- * If the context was copied. _all_ copies must be released before another
- * operation can proceed
- */
 
 static TEE_Result sha3_init(void)
 {
