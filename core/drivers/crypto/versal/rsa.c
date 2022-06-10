@@ -58,12 +58,24 @@ static TEE_Result do_encrypt(struct drvcrypt_rsa_ed *rsa_data)
 	if (rsa_data->key.n_size == 128)
 		return TEE_ERROR_NOT_IMPLEMENTED;
 
+	switch (rsa_data->rsa_id) {
+	case DRVCRYPT_RSASSA_PSS:
+	case DRVCRYPT_RSA_NOPAD:
+	case DRVCRYPT_RSA_OAEP:
+		return TEE_ERROR_NOT_IMPLEMENTED;
+	case DRVCRYPT_RSASSA_PKCS_V1_5:
+		/* perhaps check for the SHA384 algorithm */
+		break;
+	default:
+		panic();
+	}
+
 	versal_mbox_alloc(512 + crypto_bignum_num_bytes(p->e), NULL, &key);
 	crypto_bignum_bn2bin_eswap(p->n, key.buf);
 	crypto_bignum_bn2bin_eswap(p->e, (uint8_t *)key.buf + 512);
 
 	versal_mbox_alloc(rsa_data->message.length, rsa_data->message.data,
-			    &msg);
+			  &msg);
 	versal_mbox_alloc(rsa_data->cipher.length, NULL, &cipher);
 	versal_mbox_alloc(sizeof(*cmd), NULL, &cmd_buf);
 
@@ -86,7 +98,8 @@ static TEE_Result do_encrypt(struct drvcrypt_rsa_ed *rsa_data)
 		goto out;
 	}
 
-	memcpy(rsa_data->cipher.data, cipher.buf, rsa_data->cipher.length);
+	memcpy(rsa_data->cipher.data, cipher.buf, rsa_data->key.n_size);
+	rsa_data->cipher.length = rsa_data->key.n_size;
 	ret = TEE_SUCCESS;
 out:
 	free(cipher.buf);
@@ -111,12 +124,24 @@ static TEE_Result do_decrypt(struct drvcrypt_rsa_ed *rsa_data)
 	if (rsa_data->key.n_size == 128)
 		return TEE_ERROR_NOT_IMPLEMENTED;
 
+	switch (rsa_data->rsa_id) {
+	case DRVCRYPT_RSASSA_PSS:
+	case DRVCRYPT_RSA_OAEP:
+	case DRVCRYPT_RSA_NOPAD:
+		return TEE_ERROR_NOT_IMPLEMENTED;
+	case DRVCRYPT_RSASSA_PKCS_V1_5:
+		/* perhaps check for the SHA384 algorithm */
+		break;
+	default:
+		panic();
+	}
+
 	versal_mbox_alloc(512 + crypto_bignum_num_bytes(p->d), NULL, &key);
 	crypto_bignum_bn2bin_eswap(p->n, key.buf);
 	crypto_bignum_bn2bin_eswap(p->d, (uint8_t *)key.buf + 512);
 
 	versal_mbox_alloc(rsa_data->cipher.length, rsa_data->cipher.data,
-			    &cipher);
+			  &cipher);
 	versal_mbox_alloc(rsa_data->message.length, NULL, &msg);
 	versal_mbox_alloc(sizeof(*cmd), NULL, &cmd_buf);
 
@@ -139,7 +164,9 @@ static TEE_Result do_decrypt(struct drvcrypt_rsa_ed *rsa_data)
 		goto out;
 	}
 
+	rsa_data->message.length = rsa_data->key.n_size;
 	memcpy(rsa_data->message.data, msg.buf, rsa_data->message.length);
+
 	ret = TEE_SUCCESS;
 out:
 	free(cipher.buf);

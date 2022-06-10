@@ -439,13 +439,12 @@ TEE_Result crypto_acipher_rsassa_sign(uint32_t algo, struct rsa_keypair *key,
 			ret = rsa->optional.ssa_sign(&rsa_ssa);
 
 		if (ret == TEE_ERROR_NOT_IMPLEMENTED)
+			ret = drvcrypt_rsassa_sign(&rsa_ssa);
+
+		if (ret == TEE_ERROR_NOT_IMPLEMENTED)
 			ret = sw_crypto_acipher_rsassa_sign(algo, key, salt_len,
 							    msg, msg_len, sig,
 							    sig_len);
-
-		if (ret == TEE_ERROR_NOT_IMPLEMENTED)
-			ret = drvcrypt_rsassa_sign(&rsa_ssa);
-
 		/* Set the signature length */
 		*sig_len = rsa_ssa.signature.length;
 	} else {
@@ -520,14 +519,13 @@ TEE_Result crypto_acipher_rsassa_verify(uint32_t algo,
 			ret = rsa->optional.ssa_verify(&rsa_ssa);
 
 		if (ret == TEE_ERROR_NOT_IMPLEMENTED)
+			ret = drvcrypt_rsassa_verify(&rsa_ssa);
+
+		if (ret == TEE_ERROR_NOT_IMPLEMENTED)
 			ret = sw_crypto_acipher_rsassa_verify(algo, key,
 							      salt_len, msg,
 							      msg_len, sig,
 							      sig_len);
-
-		if (ret == TEE_ERROR_NOT_IMPLEMENTED)
-			ret = drvcrypt_rsassa_verify(&rsa_ssa);
-
 	} else {
 		ret = TEE_ERROR_NOT_IMPLEMENTED;
 	}
