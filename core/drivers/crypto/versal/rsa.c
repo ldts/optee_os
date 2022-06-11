@@ -64,7 +64,8 @@ static TEE_Result do_encrypt(struct drvcrypt_rsa_ed *rsa_data)
 	case DRVCRYPT_RSA_OAEP:
 		return TEE_ERROR_NOT_IMPLEMENTED;
 	case DRVCRYPT_RSASSA_PKCS_V1_5:
-		/* perhaps check for the SHA384 algorithm */
+		if (rsa_data->hash_algo != TEE_ALG_SHA384)
+			return TEE_ERROR_NOT_IMPLEMENTED;
 		break;
 	default:
 		panic();
@@ -130,7 +131,8 @@ static TEE_Result do_decrypt(struct drvcrypt_rsa_ed *rsa_data)
 	case DRVCRYPT_RSA_NOPAD:
 		return TEE_ERROR_NOT_IMPLEMENTED;
 	case DRVCRYPT_RSASSA_PKCS_V1_5:
-		/* perhaps check for the SHA384 algorithm */
+		if (rsa_data->hash_algo != TEE_ALG_SHA384)
+			return TEE_ERROR_NOT_IMPLEMENTED;
 		break;
 	default:
 		panic();
