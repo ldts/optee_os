@@ -181,13 +181,15 @@ out:
 
 static TEE_Result do_ssa_sign(struct drvcrypt_rsa_ssa *ssa_data)
 {
-	/* delegating to software */
+	/* calls back to do_decrypt via drvcrypt_rsassa_sign with the padded
+	   data and necessary checks */
 	return TEE_ERROR_NOT_IMPLEMENTED;
 }
 
 static TEE_Result do_ssa_verify(struct drvcrypt_rsa_ssa *ssa_data)
 {
-	/* delegating to software */
+	/* calls back to do_encrypt via drvcrypt_rsassa_verify with the padded
+	   data and necessary checks */
 	return TEE_ERROR_NOT_IMPLEMENTED;
 }
 
