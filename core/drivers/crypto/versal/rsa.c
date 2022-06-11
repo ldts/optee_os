@@ -95,7 +95,7 @@ static TEE_Result do_encrypt(struct drvcrypt_rsa_ed *rsa_data)
 	arg.ibuf[3].len = key.alloc_len;
 
 	if (versal_crypto_request(RSA_PUBLIC_ENCRYPT, &arg)) {
-		ret = TEE_ERROR_GENERIC;
+		ret = TEE_ERROR_SIGNATURE_INVALID;
 		goto out;
 	}
 
@@ -162,7 +162,7 @@ static TEE_Result do_decrypt(struct drvcrypt_rsa_ed *rsa_data)
 	arg.ibuf[3].len = key.alloc_len;
 
 	if (versal_crypto_request(RSA_PRIVATE_DECRYPT, &arg)) {
-		ret = TEE_ERROR_GENERIC;
+		ret = TEE_ERROR_SIGNATURE_INVALID;
 		goto out;
 	}
 
