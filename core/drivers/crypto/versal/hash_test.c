@@ -2,6 +2,13 @@
 /*
  * Copyright (C) Foundries Ltd. 2022 - All Rights Reserved
  * Author: Jorge Ramirez <jorge@foundries.io>
+ *
+ * This validates the SHA3-384 engine (NOT SHA-384)
+ *
+ * Since SHA3 is not available in the current TEE Core API used by OP-TEE we
+ * will use the SHA384 identifier.
+ *
+ * But this is incorrect of course.
  */
 
 #include <crypto/crypto.h>
@@ -383,7 +390,7 @@ static TEE_Result versal_sha3_test(void)
 			test[i].failed = true;
 	}
 
-	IMSG("Versal: Test HASH");
+	IMSG("Versal: Test SHA3-384");
 	for (i = 0; i < ARRAY_SIZE(test); i++) {
 		IMSG("---- %s:\t\t\t\t\t [%s]",
 		     test[i].name,

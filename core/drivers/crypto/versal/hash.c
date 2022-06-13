@@ -208,8 +208,23 @@ static TEE_Result versal_hash_alloc(struct crypto_hash_ctx **ctx,
 {
 	struct versal_hash_ctx *vctx = NULL;
 
+
+#if defined CFG_VERSAL_TESTS
+	/* This driver does NOT implement SHA-384 but SHA3-384 and therefore it
+	 *  is not functional under the current TEE Core API 1.1.
+	 *
+	 *  Once TEE Core API 1.3.1 has been integrated on OP-TEE and the
+	 *  algorithm identifier is available, we can enable it.
+	 *
+	 *  For regression testing _ONLY_ we can re-enable it though.
+	 *  But do not execute under xtest.
+	 */
 	if (algo != TEE_ALG_SHA384)
 		return TEE_ERROR_NOT_IMPLEMENTED;
+#else
+	return TEE_ERROR_NOT_IMPLEMENTED;
+#endif
+
 
 	vctx = calloc(1, sizeof(*vctx));
 	if (!vctx)
