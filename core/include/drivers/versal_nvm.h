@@ -249,7 +249,7 @@ struct versal_efuse_data {
 } __packed;
 
 struct versal_efuse_write_ops {
-	TEE_Result(*user_data)(uint32_t * buf, size_t len, uint32_t first,
+	TEE_Result(*user_data)(uint32_t *buf, size_t len, uint32_t first,
 			       size_t num);
 	TEE_Result(*revoke_ppk)(enum versal_nvm_ppk_type type);
 	TEE_Result(*puf)(struct versal_efuse_puf_header *buf);
@@ -258,15 +258,15 @@ struct versal_efuse_write_ops {
 };
 
 struct versal_efuse_read_ops {
-	TEE_Result(*offchip_revoke_id)(uint32_t * buf, size_t len,
+	TEE_Result(*offchip_revoke_id)(uint32_t *buf, size_t len,
 				       enum versal_nvm_offchip_id id);
-	TEE_Result(*revoke_id)(uint32_t * buf, size_t len,
+	TEE_Result(*revoke_id)(uint32_t *buf, size_t len,
 			       enum versal_nvm_revocation_id id);
-	TEE_Result(*user_data)(uint32_t * buf, size_t len, uint32_t first,
+	TEE_Result(*user_data)(uint32_t *buf, size_t len, uint32_t first,
 			       size_t num);
-	TEE_Result(*ppk)(uint32_t * buf, size_t len,
+	TEE_Result(*ppk)(uint32_t *buf, size_t len,
 			 enum versal_nvm_ppk_type type);
-	TEE_Result(*iv)(uint32_t * buf, size_t len,
+	TEE_Result(*iv)(uint32_t *buf, size_t len,
 			enum versal_nvm_iv_type type);
 	TEE_Result(*boot_env_ctrl)(struct versal_efuse_boot_env_ctrl_bits *buf);
 	TEE_Result(*puf_sec_ctrl)(struct versal_efuse_puf_sec_ctrl_bits *buf);
@@ -274,8 +274,8 @@ struct versal_efuse_read_ops {
 	TEE_Result(*sec_misc1)(struct versal_efuse_sec_misc1_bits *buf);
 	TEE_Result(*sec_ctrl)(struct versal_efuse_sec_ctrl_bits *buf);
 	TEE_Result(*puf)(struct versal_efuse_puf_header *buf);
-	TEE_Result(*dec_only)(uint32_t * buf, size_t len);
-	TEE_Result(*dna)(uint32_t * buf, size_t len);
+	TEE_Result(*dec_only)(uint32_t *buf, size_t len);
+	TEE_Result(*dna)(uint32_t *buf, size_t len);
 };
 
 struct versal_bbram_read_ops {
