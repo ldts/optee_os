@@ -104,7 +104,7 @@ static TEE_Result versal_encrypt(uint8_t *src, size_t src_len,
 	struct versal_mbox_mem q = { };
 	TEE_Result ret = TEE_SUCCESS;
 	struct ipi_cmd cmd = { };
-	uint8_t nce_data[12] = { TEST_NONCE }
+	uint8_t nce_data[12] = { TEST_NONCE };
 	uint8_t key_data[32] = { TEST_KEY };
 	uint8_t aad_data[16] = { TEST_AAD };
 	size_t nce_len = 12;
@@ -270,30 +270,24 @@ TEE_Result tee_otp_get_hw_unique_key(struct tee_hw_unique_key *hwkey)
 {
 	uint32_t dna[EFUSE_DNA_LEN / sizeof(uint32_t)] = { 0 };
 	uint8_t sha[48] = { 0 };
-	uint8_t data[68] = {
-		0x12, 0x34, 0x56, 0x78, 0x08, 0xf0, 0x70, 0xb0, 0x30, 0xd0, 0x50,
-		0x90, 0x10, 0xe0, 0x60, 0xa0, 0x20, 0xc0, 0x40, 0x80, 0x00, 0xa5,
-		0xde, 0x08, 0xd8, 0x58, 0x98, 0xa5, 0xa5, 0xfe, 0xdc, 0xa1, 0x01,
-		0x34, 0xab, 0xcd, 0xef, 0x12, 0x34, 0x56, 0x78, 0x90, 0x09, 0x87,
-		0x65, 0x43, 0x21, 0x12, 0x34, 0x87, 0x65, 0x41, 0x24, 0x45, 0x66,
-		0x79, 0x87, 0x43, 0x09, 0x71, 0x36, 0x27, 0x46, 0x38, 0x01, 0xad,
-		0x10, 0x56,
-	};
 	uint8_t enc_data[68];
 
 	if (huk.ready)
 		goto out;
 
+	/* Read DNA */
 	if (versal_get_efuse_ops()->read->dna(dna, sizeof(dna)))
 		return TEE_ERROR_GENERIC;
 
+	/* SHA3-384: 48 bytes */
 	if (versal_create_digest((uint8_t *)dna, sizeof(dna), sha, sizeof(sha)))
 		return TEE_ERROR_GENERIC;
 
-	if (versal_encrypt(data, sizeof(data), enc_data, sizeof(enc_data)))
+	/* Encrypt AES-GCM */
+	if (versal_encrypt(sha, sizeof(sha), enc_data, sizeof(enc_data)))
 		return TEE_ERROR_GENERIC;
 
-	memcpy(huk.key, sha, sizeof(huk.key));
+	memcpy(huk.key, enc_data, sizeof(huk.key));
 	huk.ready = true;
 out:
 	memcpy(hwkey->data, huk.key, HW_UNIQUE_KEY_LENGTH);
