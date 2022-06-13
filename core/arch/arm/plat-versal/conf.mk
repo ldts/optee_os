@@ -57,3 +57,7 @@ CFG_VERSAL_PUF ?= y
 
 # GPIO
 CFG_ZYNQ_GPIO ?= y
+
+# HUK
+CFG_VERSAL_HUK ?= y
+
