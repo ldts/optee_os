@@ -59,14 +59,11 @@ CFG_VERSAL_PUF            ?= y
 CFG_ZYNQ_GPIO             ?= y
 
 # HUK AES-GCM key selection:
-# To secure the system the key must be one of the eFUSE/PUF keys
-#    Secure:
-#       4  : EFUSE AES
-#       6  : EFUSE USR 0
-#       7  : EFUSE USR 1
-#      11  : PUF key
-#    Non-secure:
-#      12  : AES development key
-CFG_VERSAL_HUK_KEY        ?= 7
+# To secure the system the key must be one of the eFUSEd keys
+#    4  : EFUSE AES
+#    6  : EFUSE USR 0
+#    7  : EFUSE USR 1
+#    12 : AES development key
+CFG_VERSAL_HUK_KEY        ?= 12
 CFG_VERSAL_HUK            ?= y
 

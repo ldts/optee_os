@@ -95,11 +95,33 @@ struct versal_aes_init {
 
 static int versal_secure_key(enum aes_key_src src)
 {
+	struct versal_efuse_sec_ctrl_bits ctrl = { };
+	char const *key = NULL;
+
+	if (versal_get_efuse_ops()->read->sec_ctrl(&ctrl))
+		panic();
+
 	switch (src) {
 	case XSECURE_AES_EFUSE_KEY:
+		if (!ctrl.aes_crc_lk || !ctrl.aes_wr_lk) {
+			key = "XSECURE_AES_EFUSE_KEY";
+			goto error;
+		}
+		return true;
 	case XSECURE_AES_EFUSE_USER_KEY_0:
+		if (!ctrl.user_key0_crc_lk || !ctrl.user_key0_wr_lk) {
+			key = "XSECURE_AES_EFUSE_USER_KEY_0";
+			goto error;
+		}
+		return true;
 	case XSECURE_AES_EFUSE_USER_KEY_1:
+		if (!ctrl.user_key1_crc_lk || !ctrl.user_key1_wr_lk) {
+			key = "XSECURE_AES_EFUSE_USER_KEY_0";
+			goto error;
+		}
+		return true;
 	case XSECURE_AES_PUF_KEY:
+		/* TODO */
 		return true;
 	case XSECURE_AES_USER_KEY_0:
 		return false;
@@ -108,6 +130,9 @@ static int versal_secure_key(enum aes_key_src src)
 	}
 
 	return false;
+error:
+	EMSG("Key requested for Secure HUK generation %s not ready!", key);
+	panic();
 }
 
 static TEE_Result versal_encrypt(uint8_t *src, size_t src_len,
