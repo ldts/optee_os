@@ -17,6 +17,7 @@
 #include <drivers/versal_nvm.h>
 #include <drivers/versal_mbox.h>
 #include <initcall.h>
+#include <kernel/panic.h>
 #include <mm/core_memprot.h>
 #include <string.h>
 #include <tee/cache.h>
@@ -26,6 +27,8 @@
 #define __STR(X) #X
 #define STR(X) __STR(X)
 
+#define HEXDUMP 1
+
 static TEE_Result efuse_read_ppk(void)
 {
 	struct versal_efuse_ops const *ops = versal_get_efuse_ops();
@@ -33,7 +36,7 @@ static TEE_Result efuse_read_ppk(void)
 
 	if (ops->read->ppk(hash, sizeof(hash), EFUSE_PPK1))
 		return TEE_ERROR_GENERIC;
-#if 0
+#if HEXDUMP
 	DMSG("PPK1 hash:");
 	DHEXDUMP((void *)hash, sizeof(hash));
 #endif
@@ -47,7 +50,7 @@ static TEE_Result efuse_read_iv(void)
 
 	if (ops->read->iv(iv, sizeof(iv), EFUSE_PLM_IV_RANGE))
 		return TEE_ERROR_GENERIC;
-#if 0
+#if HEXDUMP
 	DMSG("EFUSE_PLM_IV_RANGE eFuse:");
 	DHEXDUMP((void *)iv, sizeof(iv));
 #endif
@@ -61,7 +64,7 @@ static TEE_Result efuse_read_dna(void)
 
 	if (ops->read->dna(dna, sizeof(dna)))
 		return TEE_ERROR_GENERIC;
-#if 0
+#if HEXDUMP
 	DMSG("DNA eFuse");
 	DHEXDUMP((void *)dna, sizeof(dna));
 #endif
@@ -75,7 +78,7 @@ static TEE_Result efuse_read_user_fuses(void)
 
 	if (ops->read->user_data(fuses, sizeof(fuses), 1, 10))
 		return TEE_ERROR_GENERIC;
-#if 0
+#if HEXDUMP
 	DMSG("User eFuse(s)");
 	DHEXDUMP((void *)fuses, sizeof(fuses));
 #endif
@@ -99,6 +102,32 @@ static TEE_Result efuse_write_user_fuses(void)
 
 }
 
+static TEE_Result efuse_write_aes_key_user_1(void)
+{
+#if 0
+	struct versal_efuse_ops const *ops = versal_get_efuse_ops();
+	struct versal_efuse_aes_keys keys = { };
+	uint32_t fuses[8] = {
+		0xf878b838, 0xd8589818, 0xe868a828, 0xc8488808,
+		0xf070b030, 0xd0509010, 0xe060a020, 0xc0408000,
+	};
+
+	keys.prgm_user_key1 = 1;
+	memcpy(keys.user_key1, fuses, sizeof(fuses));
+
+	for (size_t i = 0; i < 8; i++)
+		EMSG("efuse 0x%x", keys.user_key1[i]);
+
+	if (ops->write->aes_keys(&keys))
+		return TEE_ERROR_GENERIC;
+
+	return TEE_SUCCESS;
+#else
+	return TEE_ERROR_NOT_IMPLEMENTED;
+#endif
+
+}
+
 static TEE_Result efuse_read_revoke_id(void)
 {
 	struct versal_efuse_ops const *ops = versal_get_efuse_ops();
@@ -107,7 +136,7 @@ static TEE_Result efuse_read_revoke_id(void)
 	memset(fuses, 0xff, sizeof(fuses));
 	if (ops->read->revoke_id(fuses, sizeof(fuses),EFUSE_REVOCATION_ID_3))
 		return TEE_ERROR_GENERIC;
-#if 0
+#if HEXDUMP
 	DMSG("Revokeid");
 	DHEXDUMP((void *)fuses, sizeof(fuses));
 #endif
@@ -122,7 +151,7 @@ static TEE_Result efuse_read_misc_ctrl(void)
 	memset(&buf, 0xff, sizeof(buf));
 	if (ops->read->misc_ctrl(&buf))
 		return TEE_ERROR_GENERIC;
-#if 0
+#if HEXDUMP
 	DMSG("Misc Ctrl");
 	DHEXDUMP((void *)&buf, sizeof(buf));
 #endif
@@ -137,7 +166,7 @@ static TEE_Result efuse_read_sec_ctrl(void)
 	memset(&buf, 0xff, sizeof(buf));
 	if (ops->read->sec_ctrl(&buf))
 		return TEE_ERROR_GENERIC;
-#if 0
+#if HEXDUMP
 	DMSG("Sec Ctrl");
 	DHEXDUMP((void *)&buf, sizeof(buf));
 #endif
@@ -152,7 +181,7 @@ static TEE_Result efuse_read_sec_misc1(void)
 	memset(&buf, 0xff, sizeof(buf));
 	if (ops->read->sec_misc1(&buf))
 		return TEE_ERROR_GENERIC;
-#if 0
+#if HEXDUMP
 	DMSG("Sec Misc1");
 	DHEXDUMP((void *)&buf, sizeof(buf));
 #endif
@@ -167,7 +196,7 @@ static TEE_Result efuse_read_boot_env_ctrl(void)
 	memset(&buf, 0xff, sizeof(buf));
 	if (ops->read->boot_env_ctrl(&buf))
 		return TEE_ERROR_GENERIC;
-#if 0
+#if HEXDUMP
 	DMSG("Boot Env Ctrl");
 	DHEXDUMP((void *)&buf, sizeof(buf));
 #endif
@@ -183,7 +212,7 @@ static TEE_Result efuse_read_offchip_revoke_id(void)
 	memset(fuses, 0xff, sizeof(fuses));
 	if (ops->read->revoke_id(fuses, sizeof(fuses), id))
 		return TEE_ERROR_GENERIC;
-#if 0
+#if HEXDUMP
 	DMSG("Offchip revokeid");
 	DHEXDUMP((void *)fuses, sizeof(fuses));
 #endif
@@ -199,7 +228,7 @@ static TEE_Result efuse_read_dec_only(void)
 	memset(fuses, 0xff, sizeof(fuses));
 	if (ops->read->dec_only(fuses, sizeof(fuses)))
 		return TEE_ERROR_GENERIC;
-#if 0
+#if HEXDUMP
 	DMSG("DecOnly");
 	DHEXDUMP((void *)fuses, sizeof(fuses));
 #endif
@@ -214,7 +243,7 @@ static TEE_Result efuse_read_puf(void)
 	memset(&buf, 0xff, sizeof(buf));
 	if (ops->read->puf(&buf))
 		return TEE_ERROR_GENERIC;
-#if 0
+#if HEXDUMP
 	DMSG("PUF");
 	DHEXDUMP((void *)&buf, sizeof(buf));
 #endif
@@ -229,7 +258,7 @@ static TEE_Result efuse_read_puf_sec_ctrl(void)
 	memset(&buf, 0xff, sizeof(buf));
 	if (ops->read->puf_sec_ctrl(&buf))
 		return TEE_ERROR_GENERIC;
-#if 0
+#if HEXDUMP
 	DMSG("PUF sec ctrl");
 	DHEXDUMP((void *)&buf, sizeof(buf));
 #endif
@@ -250,7 +279,7 @@ static TEE_Result bbram_read_write_user(void)
 
 	if (user != 10)
 		return TEE_ERROR_GENERIC;
-#if 0
+#if HEXDUMP
 	DMSG("BBRAM user data");
 	DMSG(" - 0x%x", user);
 #endif
@@ -262,7 +291,8 @@ static struct {
 	const char *name;
 	TEE_Result failed;
 } test[] = {
-	{ .f = efuse_write_user_fuses,       .name = STR(EFUSE wr usr     ),},
+	{ .f = efuse_write_aes_key_user_1,   .name = STR(EFUSE wr aes usr1), },
+	{ .f = efuse_write_user_fuses,       .name = STR(EFUSE wr usr), },
 	{ .f = efuse_read_user_fuses,        .name = STR(EFUSE rd usr     ),},
 	{ .f = efuse_read_dna,               .name = STR(EFUSE rd dna     ),},
 	{ .f = efuse_read_ppk,               .name = STR(EFUSE rd ppk     ),},
