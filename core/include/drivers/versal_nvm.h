@@ -59,7 +59,7 @@ enum versal_nvm_offchip_id {
 };
 
 /*
- * all structures mapped to the PLM processor must be address_and_size aligned
+ * All structures mapped to the PLM processor must be address_and_size aligned
  * to the cacheline_len.
  */
 
@@ -69,8 +69,8 @@ struct versal_efuse_glitch_cfg_bits {
 	uint32_t glitch_det_trim;
 	uint8_t gd_rom_monitor_en;
 	uint8_t gd_halt_boot_en;
-	uint8_t pad[56];
-} __packed;
+	uint8_t pad[53];
+};
 
 struct versal_efuse_aes_keys {
 	uint8_t prgm_aes_key;
@@ -79,8 +79,8 @@ struct versal_efuse_aes_keys {
 	uint32_t aes_key[8];
 	uint32_t user_key0[8];
 	uint32_t user_key1[8];
-	uint8_t pad[29];
-} __packed;
+	uint8_t pad[25];
+};
 
 struct versal_efuse_ppk_hash {
 	uint8_t prgm_ppk0_hash;
@@ -89,32 +89,32 @@ struct versal_efuse_ppk_hash {
 	uint32_t ppk0_hash[8];
 	uint32_t ppk1_hash[8];
 	uint32_t ppk2_hash[8];
-	uint8_t pad[29];
-} __packed;
+	uint8_t pad[89];
+};
 
 struct versal_efuse_dec_only {
 	uint8_t prgm_dec_only;
 	uint8_t pad[63];
-} __packed;
+};
 
 struct versal_efuse_revoke_ids {
 	uint8_t prgm_revoke_id;
 	uint32_t revoke_id[8];
-	uint8_t pad[31];
-} __packed;
+	uint8_t pad[89];
+};
 
 struct versal_efuse_offchip_ids {
 	uint8_t prgm_offchip_id;
 	uint32_t offchip_id[8];
-	uint8_t pad[31];
-} __packed;
+	uint8_t pad[89];
+};
 
 struct versal_efuse_user_data {
 	uint32_t start;
 	uint32_t num;
 	uint64_t addr;
 	uint8_t pad[48];
-} __packed;
+};
 
 struct versal_efuse_puf_fuse {
 	uint8_t env_monitor_dis;
@@ -122,8 +122,8 @@ struct versal_efuse_puf_fuse {
 	uint32_t start;
 	uint32_t num;
 	uint64_t addr;
-	uint8_t pad[46];
-} __packed;
+	uint8_t pad[104];
+};
 
 struct versal_efuse_ivs {
 	uint8_t prgm_meta_header_iv;
@@ -135,7 +135,7 @@ struct versal_efuse_ivs {
 	uint32_t plm_iv[3];
 	uint32_t data_partition_iv[3];
 	uint8_t pad[12];
-} __packed;
+};
 
 struct versal_efuse_misc_ctrl_bits {
 	uint8_t glitch_det_halt_boot_en;
@@ -149,7 +149,7 @@ struct versal_efuse_misc_ctrl_bits {
 	uint8_t ppk1_invalid;
 	uint8_t ppk2_invalid;
 	uint8_t pad[54];
-} __packed;
+};
 
 struct versal_efuse_puf_sec_ctrl_bits {
 	uint8_t puf_regen_dis;
@@ -158,7 +158,7 @@ struct versal_efuse_puf_sec_ctrl_bits {
 	uint8_t puf_dis;
 	uint8_t puf_syn_lk;
 	uint8_t pad[59];
-} __packed;
+};
 
 struct versal_efuse_sec_misc1_bits {
 	uint8_t lpd_mbist_en;
@@ -167,7 +167,7 @@ struct versal_efuse_sec_misc1_bits {
 	uint8_t sysmon_volt_mon_en;
 	uint8_t sysmon_temp_mon_en;
 	uint8_t pad[59];
-} __packed;
+};
 
 struct versal_efuse_boot_env_ctrl_bits {
 	uint8_t prgm_sysmon_temp_hot;
@@ -182,7 +182,7 @@ struct versal_efuse_boot_env_ctrl_bits {
 	uint8_t sysmon_volt_pslp;
 	uint8_t sysmon_temp_cold;
 	uint8_t pad[53];
-} __packed;
+};
 
 struct versal_efuse_sec_ctrl_bits {
 	uint8_t aes_dis;
@@ -202,23 +202,17 @@ struct versal_efuse_sec_ctrl_bits {
 	uint8_t boot_env_wr_lk;
 	uint8_t reg_init_dis;
 	uint8_t pad[48];
-} __packed;
+};
 
 struct versal_efuse_puf_header {
-	struct versal_efuse_puf_sec_ctrl_bits_nopad {
-		uint8_t puf_regen_dis;
-		uint8_t puf_hd_invalid;
-		uint8_t puf_test2_dis;
-		uint8_t puf_dis;
-		uint8_t puf_syn_lk;
-	} sec_ctrl;
+	struct versal_efuse_puf_sec_ctrl_bits sec_ctrl;
 	uint8_t prmg_puf_helper_data;
 	uint8_t env_monitor_dis;
 	uint32_t efuse_syn_data[PUF_SYN_DATA_WORDS];
 	uint32_t chash;
 	uint32_t aux;
-	uint8_t pad[52];
-}__packed;
+	uint8_t pad[56];
+};
 
 struct versal_efuse_puf_hd {
 	struct versal_efuse_puf_sec_ctrl_bits puf_sec_ctrl_bits;
@@ -227,8 +221,8 @@ struct versal_efuse_puf_hd {
 	uint32_t efuse_syn_data[127];
 	uint32_t chash;
 	uint32_t aux;
-	uint8_t pad[58];
-} __packed;
+	uint8_t pad[118];
+};
 
 struct versal_efuse_write_ops {
 	TEE_Result(*user_data)(uint32_t *p, size_t len, uint32_t first,

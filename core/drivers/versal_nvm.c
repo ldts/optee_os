@@ -92,10 +92,10 @@ struct versal_bbram_data {
 };
 
 struct versal_nvm_write_req {
-	enum versal_nvm_api_id efuse_id;
 	struct versal_efuse_data data;
 	struct versal_bbram_data bbram;
 	struct ipi_buf ibuf[MAX_IPI_BUF];
+	enum versal_nvm_api_id efuse_id;
 };
 
 static TEE_Result prepare_cmd(struct ipi_cmd *cmd, enum versal_nvm_api_id efuse,
@@ -196,6 +196,9 @@ static TEE_Result versal_nvm_write(struct versal_nvm_write_req *req)
 	case BBRAM_WRITE_USER_DATA:
 		val = req->bbram.user_data;
 		arg = &val;
+		break;
+	case EFUSE_WRITE_PUF:
+	case EFUSE_WRITE:
 		break;
 	default:
 		return TEE_ERROR_GENERIC;
@@ -311,7 +314,7 @@ static TEE_Result efuse_write_user_data(uint32_t *buf, size_t len,
 		.start = first,
 		.num = num,
 	};
-	struct versal_nvm_write_req req = {
+	struct versal_nvm_write_req __aligned_efuse req = {
 		.data.user_fuse_addr = virt_to_phys(&cfg),
 		.data.env_mon_dis_flag = 1,
 		.efuse_id = EFUSE_WRITE,
@@ -341,7 +344,7 @@ static TEE_Result efuse_write_user_data(uint32_t *buf, size_t len,
 static TEE_Result efuse_write_aes_keys(struct versal_efuse_aes_keys *keys)
 {
 	struct versal_efuse_aes_keys cfg __aligned_efuse = { };
-	struct versal_nvm_write_req req = {
+	struct versal_nvm_write_req req __aligned_efuse = {
 		.data.aes_key_addr = virt_to_phys(&cfg),
 		.data.env_mon_dis_flag = 1,
 		.efuse_id = EFUSE_WRITE,
@@ -360,7 +363,7 @@ static TEE_Result efuse_write_aes_keys(struct versal_efuse_aes_keys *keys)
 static TEE_Result efuse_write_ppk_hash(struct versal_efuse_ppk_hash *hash)
 {
 	struct versal_efuse_ppk_hash cfg __aligned_efuse = { };
-	struct versal_nvm_write_req req = {
+	struct versal_nvm_write_req req __aligned_efuse = {
 		.data.ppk_hash_addr = virt_to_phys(&cfg),
 		.data.env_mon_dis_flag = 1,
 		.efuse_id = EFUSE_WRITE,
@@ -379,7 +382,7 @@ static TEE_Result efuse_write_ppk_hash(struct versal_efuse_ppk_hash *hash)
 static TEE_Result efuse_write_iv(struct versal_efuse_ivs *p)
 {
 	struct versal_efuse_ivs cfg __aligned_efuse = { };
-	struct versal_nvm_write_req req = {
+	struct versal_nvm_write_req req __aligned_efuse = {
 		.data.iv_addr = virt_to_phys(&cfg),
 		.data.env_mon_dis_flag = 1,
 		.efuse_id = EFUSE_WRITE,
@@ -398,7 +401,7 @@ static TEE_Result efuse_write_iv(struct versal_efuse_ivs *p)
 static TEE_Result efuse_write_dec_only(struct versal_efuse_dec_only *p)
 {
 	struct versal_efuse_dec_only cfg __aligned_efuse = { };
-	struct versal_nvm_write_req req = {
+	struct versal_nvm_write_req req __aligned_efuse = {
 		.data.dec_only_addr = virt_to_phys(&cfg),
 		.data.env_mon_dis_flag = 1,
 		.efuse_id = EFUSE_WRITE,
@@ -417,7 +420,7 @@ static TEE_Result efuse_write_dec_only(struct versal_efuse_dec_only *p)
 static TEE_Result efuse_write_sec(struct versal_efuse_sec_ctrl_bits *p)
 {
 	struct versal_efuse_sec_ctrl_bits cfg __aligned_efuse = { };
-	struct versal_nvm_write_req req = {
+	struct versal_nvm_write_req req __aligned_efuse = {
 		.data.sec_ctrl_addr = virt_to_phys(&cfg),
 		.data.env_mon_dis_flag = 1,
 		.efuse_id = EFUSE_WRITE,
@@ -436,7 +439,7 @@ static TEE_Result efuse_write_sec(struct versal_efuse_sec_ctrl_bits *p)
 static TEE_Result efuse_write_misc(struct versal_efuse_misc_ctrl_bits *p)
 {
 	struct versal_efuse_misc_ctrl_bits cfg __aligned_efuse = { };
-	struct versal_nvm_write_req req = {
+	struct versal_nvm_write_req req __aligned_efuse = {
 		.data.misc_ctrl_addr = virt_to_phys(&cfg),
 		.data.env_mon_dis_flag = 1,
 		.efuse_id = EFUSE_WRITE,
@@ -455,7 +458,7 @@ static TEE_Result efuse_write_misc(struct versal_efuse_misc_ctrl_bits *p)
 static TEE_Result efuse_write_glitch_cfg(struct versal_efuse_glitch_cfg_bits *p)
 {
 	struct versal_efuse_glitch_cfg_bits cfg __aligned_efuse = { };
-	struct versal_nvm_write_req req = {
+	struct versal_nvm_write_req req __aligned_efuse = {
 		.data.glitch_cfg_addr = virt_to_phys(&cfg),
 		.data.env_mon_dis_flag = 1,
 		.efuse_id = EFUSE_WRITE,
@@ -475,7 +478,7 @@ static TEE_Result efuse_write_boot_env(struct
 				       versal_efuse_boot_env_ctrl_bits *p)
 {
 	struct versal_efuse_boot_env_ctrl_bits cfg __aligned_efuse = { };
-	struct versal_nvm_write_req req = {
+	struct versal_nvm_write_req req __aligned_efuse = {
 		.data.boot_env_ctrl_addr = virt_to_phys(&cfg),
 		.data.env_mon_dis_flag = 1,
 		.efuse_id = EFUSE_WRITE,
@@ -494,7 +497,7 @@ static TEE_Result efuse_write_boot_env(struct
 static TEE_Result efuse_write_sec_misc1(struct versal_efuse_sec_misc1_bits *p)
 {
 	struct versal_efuse_sec_misc1_bits cfg __aligned_efuse = { };
-	struct versal_nvm_write_req req = {
+	struct versal_nvm_write_req req __aligned_efuse = {
 		.data.misc1_ctrl_addr = virt_to_phys(&cfg),
 		.data.env_mon_dis_flag = 1,
 		.efuse_id = EFUSE_WRITE,
@@ -513,7 +516,7 @@ static TEE_Result efuse_write_sec_misc1(struct versal_efuse_sec_misc1_bits *p)
 static TEE_Result efuse_write_offchip_ids(struct versal_efuse_offchip_ids *p)
 {
 	struct versal_efuse_offchip_ids cfg __aligned_efuse = { };
-	struct versal_nvm_write_req req = {
+	struct versal_nvm_write_req req __aligned_efuse = {
 		.data.offchip_id_addr = virt_to_phys(&cfg),
 		.data.env_mon_dis_flag = 1,
 		.efuse_id = EFUSE_WRITE,
@@ -532,7 +535,7 @@ static TEE_Result efuse_write_offchip_ids(struct versal_efuse_offchip_ids *p)
 static TEE_Result efuse_write_revoke_ppk(enum versal_nvm_ppk_type type)
 {
 	struct versal_efuse_misc_ctrl_bits cfg __aligned_efuse = { };
-	struct versal_nvm_write_req req = {
+	struct versal_nvm_write_req req __aligned_efuse = {
 		.data.misc_ctrl_addr = virt_to_phys(&cfg),
 		.data.env_mon_dis_flag = 1,
 		.efuse_id = EFUSE_WRITE,
@@ -560,7 +563,7 @@ static TEE_Result efuse_write_revoke_ppk(enum versal_nvm_ppk_type type)
 static TEE_Result efuse_write_revoke_id(uint32_t id)
 {
 	struct versal_efuse_revoke_ids cfg __aligned_efuse = { };
-	struct versal_nvm_write_req req = {
+	struct versal_nvm_write_req req __aligned_efuse = {
 		.data.revoke_id_addr = virt_to_phys(&cfg),
 		.data.env_mon_dis_flag = 1,
 		.efuse_id = EFUSE_WRITE,
@@ -763,7 +766,7 @@ static TEE_Result efuse_read_puf(struct versal_efuse_puf_header *buf)
 static TEE_Result efuse_write_puf(struct versal_efuse_puf_header *buf)
 {
 	struct versal_efuse_puf_header cfg __aligned_efuse = { };
-	struct versal_nvm_write_req req = {
+	struct versal_nvm_write_req req __aligned_efuse = {
 		.efuse_id = EFUSE_WRITE_PUF,
 	};
 
@@ -781,7 +784,7 @@ static TEE_Result efuse_write_puf(struct versal_efuse_puf_header *buf)
 static TEE_Result bbram_write_aes_key(uint8_t *key, size_t len)
 {
 	uint8_t lbuf[1024]__aligned_efuse = { 0 };
-	struct versal_nvm_write_req req = {
+	struct versal_nvm_write_req req __aligned_efuse = {
 		.efuse_id = BBRAM_WRITE_AES_KEY,
 		.bbram.aes_key_len = len,
 	};
@@ -802,7 +805,7 @@ static TEE_Result bbram_write_aes_key(uint8_t *key, size_t len)
 
 static TEE_Result bbram_zeroize(void)
 {
-	struct versal_nvm_write_req req  = {
+	struct versal_nvm_write_req req __aligned_efuse  = {
 		.efuse_id = BBRAM_ZEROIZE,
 	};
 
@@ -814,7 +817,7 @@ static TEE_Result bbram_zeroize(void)
 
 static TEE_Result bbram_write_user_data(uint32_t data)
 {
-	struct versal_nvm_write_req req = {
+	struct versal_nvm_write_req req __aligned_efuse = {
 		.efuse_id = BBRAM_WRITE_USER_DATA,
 		.bbram.user_data = data,
 	};
@@ -845,7 +848,7 @@ static TEE_Result bbram_read_user_data(uint32_t *data)
 
 static TEE_Result bbram_lock_write_user_data(void)
 {
-	struct versal_nvm_write_req req  = {
+	struct versal_nvm_write_req req __aligned_efuse  = {
 		.efuse_id = BBRAM_LOCK_WRITE_USER_DATA,
 	};
 
