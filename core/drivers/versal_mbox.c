@@ -94,11 +94,15 @@ static TEE_Result versal_mbox_write_req(struct ipi_cmd *cmd)
 		if (!cmd->ibuf[i].buf)
 			continue;
 
-		if (!IS_ALIGNED((uintptr_t)cmd->ibuf[i].buf, CACHELINE_LEN))
+		if (!IS_ALIGNED((uintptr_t)cmd->ibuf[i].buf, CACHELINE_LEN)) {
+			EMSG("address not aligned %d - 0x%x", i, cmd->ibuf[i].buf);
 			return TEE_ERROR_GENERIC;
+		}
 
-		if (!IS_ALIGNED(cmd->ibuf[i].len, CACHELINE_LEN))
+		if (!IS_ALIGNED(cmd->ibuf[i].len, CACHELINE_LEN)) {
+			EMSG("len not aligned %d - 0x%x", i, cmd->ibuf[i].len);
 			return TEE_ERROR_GENERIC;
+		}
 
 		cache_operation(TEE_CACHEFLUSH,
 				cmd->ibuf[i].buf, cmd->ibuf[i].len);
