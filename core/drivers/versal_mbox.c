@@ -95,12 +95,12 @@ static TEE_Result versal_mbox_write_req(struct ipi_cmd *cmd)
 			continue;
 
 		if (!IS_ALIGNED((uintptr_t)cmd->ibuf[i].buf, CACHELINE_LEN)) {
-			EMSG("address not aligned %d - 0x%x", i, cmd->ibuf[i].buf);
+			EMSG("address not aligned: buffer %ld - 0x%p", i, cmd->ibuf[i].buf);
 			return TEE_ERROR_GENERIC;
 		}
 
 		if (!IS_ALIGNED(cmd->ibuf[i].len, CACHELINE_LEN)) {
-			EMSG("len not aligned %d - 0x%x", i, cmd->ibuf[i].len);
+			EMSG("length not aligned: buffer %ld - %ld", i, cmd->ibuf[i].len);
 			return TEE_ERROR_GENERIC;
 		}
 
