@@ -230,60 +230,50 @@ struct versal_efuse_puf_hd {
 	uint8_t pad[58];
 } __packed;
 
-/* uint64_t are addresses - usually pointers to some of the above structures */
-struct versal_efuse_data {
-	uint64_t env_mon_dis_flag;
-	uint64_t aes_key_addr;
-	uint64_t ppk_hash_addr;
-	uint64_t dec_only_addr;
-	uint64_t sec_ctrl_addr;
-	uint64_t misc_ctrl_addr;
-	uint64_t revoke_id_addr;
-	uint64_t iv_addr;
-	uint64_t user_fuse_addr;
-	uint64_t glitch_cfg_addr;
-	uint64_t boot_env_ctrl_addr;
-	uint64_t misc1_ctrl_addr;
-	uint64_t offchip_id_addr;
-	uint8_t pad[24];
-} __packed;
-
 struct versal_efuse_write_ops {
-	TEE_Result(*user_data)(uint32_t *buf, size_t len, uint32_t first,
+	TEE_Result(*user_data)(uint32_t *p, size_t len, uint32_t first,
 			       size_t num);
+	TEE_Result(*boot_env_ctrl)(struct versal_efuse_boot_env_ctrl_bits *p);
+	TEE_Result(*glitch_cfg)(struct versal_efuse_glitch_cfg_bits *p);
+	TEE_Result(*sec_misc1)(struct versal_efuse_sec_misc1_bits *p);
+	TEE_Result(*misc_ctrl)(struct versal_efuse_misc_ctrl_bits *p);
+	TEE_Result(*offchip_ids)(struct versal_efuse_offchip_ids *p);
+	TEE_Result(*sec_ctrl)(struct versal_efuse_sec_ctrl_bits *p);
+	TEE_Result(*dec_only)(struct versal_efuse_dec_only *p);
+	TEE_Result(*ppk_hash)(struct versal_efuse_ppk_hash *p);
+	TEE_Result(*aes_keys)(struct versal_efuse_aes_keys *p);
 	TEE_Result(*revoke_ppk)(enum versal_nvm_ppk_type type);
-	TEE_Result(*puf)(struct versal_efuse_puf_header *buf);
+	TEE_Result(*puf)(struct versal_efuse_puf_header *p);
 	TEE_Result(*iv)(struct versal_efuse_ivs *p);
 	TEE_Result(*revoke_id)(uint32_t id);
 };
 
 struct versal_efuse_read_ops {
-	TEE_Result(*offchip_revoke_id)(uint32_t *buf, size_t len,
+	TEE_Result(*offchip_revoke_id)(uint32_t *p, size_t len,
 				       enum versal_nvm_offchip_id id);
-	TEE_Result(*revoke_id)(uint32_t *buf, size_t len,
+	TEE_Result(*revoke_id)(uint32_t *p, size_t len,
 			       enum versal_nvm_revocation_id id);
-	TEE_Result(*user_data)(uint32_t *buf, size_t len, uint32_t first,
+	TEE_Result(*user_data)(uint32_t *p, size_t len, uint32_t first,
 			       size_t num);
-	TEE_Result(*ppk)(uint32_t *buf, size_t len,
+	TEE_Result(*ppk)(uint32_t *p, size_t len,
 			 enum versal_nvm_ppk_type type);
-	TEE_Result(*iv)(uint32_t *buf, size_t len,
-			enum versal_nvm_iv_type type);
-	TEE_Result(*boot_env_ctrl)(struct versal_efuse_boot_env_ctrl_bits *buf);
-	TEE_Result(*puf_sec_ctrl)(struct versal_efuse_puf_sec_ctrl_bits *buf);
-	TEE_Result(*misc_ctrl)(struct versal_efuse_misc_ctrl_bits *buf);
-	TEE_Result(*sec_misc1)(struct versal_efuse_sec_misc1_bits *buf);
-	TEE_Result(*sec_ctrl)(struct versal_efuse_sec_ctrl_bits *buf);
-	TEE_Result(*puf)(struct versal_efuse_puf_header *buf);
-	TEE_Result(*dec_only)(uint32_t *buf, size_t len);
-	TEE_Result(*dna)(uint32_t *buf, size_t len);
+	TEE_Result(*iv)(uint32_t *p, size_t len, enum versal_nvm_iv_type type);
+	TEE_Result(*boot_env_ctrl)(struct versal_efuse_boot_env_ctrl_bits *p);
+	TEE_Result(*puf_sec_ctrl)(struct versal_efuse_puf_sec_ctrl_bits *p);
+	TEE_Result(*misc_ctrl)(struct versal_efuse_misc_ctrl_bits *p);
+	TEE_Result(*sec_misc1)(struct versal_efuse_sec_misc1_bits *p);
+	TEE_Result(*sec_ctrl)(struct versal_efuse_sec_ctrl_bits *p);
+	TEE_Result(*puf)(struct versal_efuse_puf_header *p);
+	TEE_Result(*dec_only)(uint32_t *p, size_t len);
+	TEE_Result(*dna)(uint32_t *p, size_t len);
 };
 
 struct versal_bbram_read_ops {
-	TEE_Result (*user_data)(uint32_t *data);
+	TEE_Result (*user_data)(uint32_t *p);
 };
 
 struct versal_bbram_write_ops {
-	TEE_Result (*aes_key)(uint8_t *key, size_t len);
+	TEE_Result (*aes_key)(uint8_t *p, size_t len);
 	TEE_Result(*lock_write_user_data)(void);
 	TEE_Result (*user_data)(uint32_t data);
 	TEE_Result(*zeroize)(void);
@@ -301,6 +291,5 @@ struct versal_efuse_ops {
 
 struct versal_efuse_ops const *versal_get_efuse_ops(void);
 struct versal_bbram_ops const *versal_get_bbram_ops(void);
-
 
 #endif /*__DRIVERS_VERSAL_NVM_H__*/
