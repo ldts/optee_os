@@ -99,6 +99,7 @@ static int versal_secure_key(enum aes_key_src src)
 	case XSECURE_AES_EFUSE_KEY:
 	case XSECURE_AES_EFUSE_USER_KEY_0:
 	case XSECURE_AES_EFUSE_USER_KEY_1:
+	case XSECURE_AES_PUF_KEY:
 		return true;
 	case XSECURE_AES_USER_KEY_0:
 		return false;
