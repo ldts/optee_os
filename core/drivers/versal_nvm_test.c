@@ -27,7 +27,7 @@
 #define __STR(X) #X
 #define STR(X) __STR(X)
 
-#define HEXDUMP 1
+#define HEXDUMP 0
 
 static TEE_Result efuse_read_ppk(void)
 {
