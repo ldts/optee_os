@@ -93,6 +93,22 @@ struct versal_aes_init {
 #define TEST_NONCE \
 0xd2, 0x45, 0x0e, 0x07, 0xea, 0x5d, 0xe0, 0x42, 0x6c, 0x0f, 0xa1, 0x33,
 
+static int versal_secure_key(enum aes_key_src src)
+{
+	switch (src) {
+	case XSECURE_AES_EFUSE_KEY:
+	case XSECURE_AES_EFUSE_USER_KEY_0:
+	case XSECURE_AES_EFUSE_USER_KEY_1:
+		return true;
+	case XSECURE_AES_USER_KEY_0:
+		return false;
+	default:
+		panic();
+	}
+
+	return false;
+}
+
 static TEE_Result versal_encrypt(uint8_t *src, size_t src_len,
 				 uint8_t *dst, size_t dst_len)
 {
@@ -110,7 +126,10 @@ static TEE_Result versal_encrypt(uint8_t *src, size_t src_len,
 	size_t nce_len = 12;
 	size_t key_len = 32;
 	size_t aad_len = 16;
-	uint32_t key_id = XSECURE_AES_USER_KEY_0;
+	uint32_t key_id = CFG_VERSAL_HUK_KEY;
+
+	if (key_id >  XSECURE_AES_ALL_KEYS)
+		return TEE_ERROR_BAD_PARAMETERS;
 
 	/* AES INIT*/
 	cmd.data[0] = API_ID(AES_INIT);
@@ -118,6 +137,12 @@ static TEE_Result versal_encrypt(uint8_t *src, size_t src_len,
 		EMSG("AES_INIT error");
 		return TEE_ERROR_GENERIC;
 	}
+
+	if (versal_secure_key(key_id)) {
+		IMSG("Using Production HUK, make sure the key is eFused");
+		goto secure;
+	}
+	IMSG("Using development HUK");
 
 	/* AES WRITE KEY */
 	versal_mbox_alloc(key_len, key_data, &p);
@@ -137,6 +162,7 @@ static TEE_Result versal_encrypt(uint8_t *src, size_t src_len,
 	if (ret)
 		return ret;
 
+secure:
 	/* AES OP init*/
 	versal_mbox_alloc(sizeof(*init), NULL, &init_buf);
 	versal_mbox_alloc(nce_len, nce_data, &p);
@@ -289,6 +315,9 @@ TEE_Result tee_otp_get_hw_unique_key(struct tee_hw_unique_key *hwkey)
 
 	memcpy(huk.key, enc_data, sizeof(huk.key));
 	huk.ready = true;
+
+	IMSG("HUK");
+	DHEXDUMP(huk.key, sizeof(huk.key));
 out:
 	memcpy(hwkey->data, huk.key, HW_UNIQUE_KEY_LENGTH);
 

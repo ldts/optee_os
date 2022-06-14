@@ -43,21 +43,27 @@ CFG_VERSAL_TRNG_SEED_LIFE ?= 3
 CFG_VERSAL_TRNG_DF_MUL    ?= 7
 
 # MBOX configuration
-CFG_VERSAL_MBOX_IPI_ID ?= 3
+CFG_VERSAL_MBOX_IPI_ID    ?= 3
 
 # Crypto
-CFG_VERSAL_CRYPTO_DRIVER ?= n
+CFG_VERSAL_CRYPTO_DRIVER  ?= n
 
 # FPGA
-CFG_VERSAL_FPGA_INIT ?= n
-CFG_VERSAL_FPGA_DDR_ADDR ?= 0x80000
+CFG_VERSAL_FPGA_INIT      ?= n
+CFG_VERSAL_FPGA_DDR_ADDR  ?= 0x80000
 
 # PUF
-CFG_VERSAL_PUF ?= y
+CFG_VERSAL_PUF            ?= y
 
 # GPIO
-CFG_ZYNQ_GPIO ?= y
+CFG_ZYNQ_GPIO             ?= y
 
-# HUK
-CFG_VERSAL_HUK ?= y
+# HUK AES-GCM key selection:
+# To secure the system the key must be one of the eFUSEd keys
+#    4  : EFUSE AES
+#    6  : EFUSE USR 0
+#    7  : EFUSE USR 1
+#    12 : AES development key
+CFG_VERSAL_HUK_KEY        ?= 7
+CFG_VERSAL_HUK            ?= y
 
