@@ -11,8 +11,11 @@
 #include <drvcrypt.h>
 #include <drvcrypt_authenc.h>
 #include <initcall.h>
+#include <kernel/boot.h>
+#include <kernel/dt.h>
 #include <kernel/panic.h>
 #include <kernel/spinlock.h>
+#include <libfdt.h>
 #include <mm/core_memprot.h>
 #include <stdlib.h>
 #include <string.h>
@@ -364,6 +367,41 @@ static struct drvcrypt_authenc versal_authenc = {
  * This driver reserves all AE_USER_KEYS for its operation - perhaps use a
  * CFG_ so the user can specify a range
  */
+static const char *const dt_ctrl_match_table[] = {
+	"xlnx,versal-sec-cfg",
+};
+
+static TEE_Result enable_secure_status(void)
+{
+	unsigned int i = 0;
+	void *fdt = NULL;
+	int node = -1;
+
+	fdt = get_external_dt();
+	if (!fdt)
+		return TEE_SUCCESS;
+
+	for (i = 0; i < ARRAY_SIZE(dt_ctrl_match_table); i++) {
+		node = fdt_node_offset_by_compatible(fdt, 0,
+						     dt_ctrl_match_table[i]);
+		if (node >= 0)
+			break;
+	}
+
+	if (node < 0)
+		return TEE_SUCCESS;
+
+	if (_fdt_get_status(fdt, node) == DT_STATUS_DISABLED)
+		return TEE_SUCCESS;
+
+	if (dt_enable_secure_status(fdt, node)) {
+		EMSG("Not able to set the AES-GCM DTB entry secure");
+		return TEE_ERROR_NOT_SUPPORTED;
+	}
+
+	return TEE_SUCCESS;
+}
+
 static TEE_Result versal_register_authenc(void)
 {
 	const uint32_t user_keys[] = {
@@ -390,7 +428,8 @@ static TEE_Result versal_register_authenc(void)
 		SLIST_INSERT_HEAD(&key_list, key, link);
 	}
 
-	return TEE_SUCCESS;
+
+	return enable_secure_status();
 }
 
 driver_init_late(versal_register_authenc);
