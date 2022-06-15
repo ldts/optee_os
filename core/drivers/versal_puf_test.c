@@ -53,7 +53,7 @@ static struct {
 	{ .f = NULL,                     .name = STR(foo), },
 };
 
-static TEE_Result versal_nvm_test(void)
+static TEE_Result versal_puf_test(void)
 {
 	TEE_Result ret = TEE_SUCCESS;
 	size_t i = 0;
@@ -74,5 +74,5 @@ static TEE_Result versal_nvm_test(void)
 
 	return TEE_SUCCESS;;
 }
-driver_init(versal_nvm_test);
+driver_init(versal_puf_test);
 
