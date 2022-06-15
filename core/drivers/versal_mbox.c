@@ -66,6 +66,95 @@ static struct versal_ipi {
 	.lcl = IPI_ID_3,
 };
 
+static void versal_mbox_call_trace(uint32_t call)
+{
+	const char *const nvm_id[] = {
+		[0] = "API_FEATURES",
+		[1] = "BBRAM_WRITE_AES_KEY",
+		[2] = "BBRAM_ZEROIZE",
+		[3] = "BBRAM_WRITE_USER_DATA",
+		[4] = "BBRAM_READ_USER_DATA",
+		[5] = "BBRAM_LOCK_WRITE_USER_DATA",
+		[6] = "EFUSE_WRITE",
+		[7] = "EFUSE_WRITE_PUF",
+		[8] = "EFUSE_PUF_USER_FUSE_WRITE",
+		[9] = "EFUSE_READ_IV",
+		[10] = "EFUSE_READ_REVOCATION_ID",
+		[11] = "EFUSE_READ_OFFCHIP_REVOCATION_ID",
+		[12] = "EFUSE_READ_USER_FUSES",
+		[13] = "EFUSE_READ_MISC_CTRL",
+		[14] = "EFUSE_READ_SEC_CTRL",
+		[15] = "EFUSE_READ_SEC_MISC1",
+		[16] = "EFUSE_READ_BOOT_ENV_CTRL",
+		[17] = "EFUSE_READ_PUF_SEC_CTRL",
+		[18] = "EFUSE_READ_PPK_HASH",
+		[19] = "EFUSE_READ_DEC_EFUSE_ONLY",
+		[20] = "EFUSE_READ_DNA",
+		[21] = "EFUSE_READ_PUF_USER_FUSES",
+		[22] = "EFUSE_READ_PUF",
+		[23] = "EFUSE_INVALID",
+	};
+	const char *const crypto_id[] = {
+		[0] = "FEATURES",
+		[1] = "RSA_SIGN_VERIFY",
+		[2] = "RSA_PUBLIC_ENCRYPT",
+		[3] = "RSA_PRIVATE_DECRYPT",
+		[4] = "RSA_KAT",
+		[32] = "SHA3_UPDATE",
+		[33] = "SHA3_KAT",
+		[64] = "ELLIPTIC_GENERATE_PUBLIC_KEY",
+		[65] = "ELLIPTIC_GENERATE_SIGN",
+		[66] = "ELLIPTIC_VALIDATE_PUBLIC_KEY",
+		[67] = "ELLIPTIC_VERIFY_SIGN",
+		[68] = "ELLIPTIC_KAT",
+		[96] = "AES_INIT",
+		[97] = "AES_OP_INIT",
+		[98] = "AES_UPDATE_AAD",
+		[99] = "AES_ENCRYPT_UPDATE",
+		[100] = "AES_ENCRYPT_FINAL",
+		[101] = "AES_DECRYPT_UPDATE",
+		[102] = "AES_DECRYPT_FINAL",
+		[103] = "AES_KEY_ZERO",
+		[104] = "AES_WRITE_KEY",
+		[105] = "AES_LOCK_USER_KEY",
+		[106] = "AES_KEK_DECRYPT",
+		[107] = "AES_SET_DPA_CM",
+		[108] = "AES_DECRYPT_KAT",
+		[109] = "AES_DECRYPT_CM_KAT",
+		[110] = "MAX",
+	};
+	const char *const puf_id[] = {
+		[0] = "PUF_API_FEATURES",
+		[1] = "PUF_REGISTRATION",
+		[2] = "PUF_REGENERATION",
+		[3] = "PUF_CLEAR_PUF_ID",
+	};
+	const char *const module[] = {
+		[5] = "CRYPTO",
+		[11] = "NVM",
+		[12] = "PUF",
+	};
+	uint32_t mid = call >>  8 & 0xff;
+	uint32_t api = call & 0xff;
+	const char *val = NULL;
+
+	switch (mid) {
+	case 5:
+		val = crypto_id[api];
+		break;
+	case 11:
+		val = nvm_id[api];
+		break;
+	case 12:
+		val = puf_id[api];
+		break;
+	default:
+		val = "INVALID";
+	}
+
+	IMSG("--- mbox: service: %s\t call: %s", module[mid], val);
+};
+
 static TEE_Result mbox_call(enum ipi_api_id id, uint32_t blocking_call)
 {
 	struct thread_smc_args args = {
@@ -178,6 +267,9 @@ TEE_Result versal_mbox_notify(struct ipi_cmd *cmd, struct ipi_cmd *rsp)
 		EMSG("Can't write the request command");
 		goto out;
 	}
+
+	if (IS_ENABLED(CFG_VERSAL_TRACE_MBOX))
+		versal_mbox_call_trace(cmd->data[0]);
 
 	ret = mbox_call(IPI_MAILBOX_NOTIFY, IPI_BLOCK);
 	if (ret) {
