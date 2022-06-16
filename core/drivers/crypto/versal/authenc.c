@@ -169,14 +169,8 @@ static TEE_Result replay_aad(struct versal_aad *p)
 static TEE_Result replay_payload(struct versal_payload *p)
 {
 	enum versal_crypto_api id = AES_DECRYPT_UPDATE;
-	struct versal_aes_input_param *input = NULL;
 	TEE_Result ret = TEE_SUCCESS;
 	struct cmd_args arg = { };
-
-	input = p->input_cmd.buf;
-	input->input_addr = virt_to_phys(p->src.buf);
-	input->input_len = p->src.len;
-	input->is_last = 0;
 
 	arg.ibuf[0].buf = p->input_cmd.buf;
 	arg.ibuf[0].len = p->input_cmd.alloc_len;
@@ -322,7 +316,9 @@ static TEE_Result do_update_aad(struct drvcrypt_authenc_update_aad *dupdate)
 	arg.ibuf[0].len = p.alloc_len;
 
 	if (versal_crypto_request(AES_UPDATE_AAD, &arg)) {
-		EMSG("AES_UPDATE_AAD error (len = %ld)", dupdate->aad.length);
+		EMSG("AES_UPDATE_AAD error "
+		     "(len req = %ld, len provided %ld)",
+		     p.len, (p.len % 16) ? p.alloc_len : p.len);
 		ret = TEE_ERROR_GENERIC;
 	}
 
@@ -356,7 +352,7 @@ static TEE_Result update_payload(struct drvcrypt_authenc_update_payload
 
 	input = input_cmd.buf;
 	input->input_addr = virt_to_phys(p.buf);
-	input->input_len = (p.len % 4) ? ROUNDUP(p.len, 4) : p.len;
+	input->input_len = (p.len % 4) ? p.alloc_len : p.len;
 	input->is_last = is_last;
 
 	arg.ibuf[0].buf = input;
@@ -370,7 +366,9 @@ static TEE_Result update_payload(struct drvcrypt_authenc_update_payload
 		id = AES_ENCRYPT_UPDATE;
 
 	if (versal_crypto_request(id, &arg)) {
-		EMSG("AES_UPDATE_PLD error (len = %ld)", dupdate->src.length);
+		EMSG("AES_UPDATE_PLD error "
+		     "(len requested = %ld, len provided %ld)",
+		     p.len, (p.len % 4) ? p.alloc_len : p.len);
 		ret = TEE_ERROR_GENERIC;
 		goto out;
 	}
