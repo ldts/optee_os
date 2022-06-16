@@ -60,70 +60,71 @@ enum aes_key_src {
 	XSECURE_AES_ALL_KEYS,                   /* AES All keys */
 };
 
-struct versal_aes_key {
-	enum aes_key_src id;
-	struct refcount refc;
-	SLIST_ENTRY(versal_aes_key) link;
+struct versal_payload {
+	struct versal_mbox_mem input_cmd;
+	struct versal_mbox_mem src;
+	struct versal_mbox_mem dst;
+	bool encrypt;
 };
 
-static unsigned int key_list_lock = SPINLOCK_UNLOCK;
-static SLIST_HEAD(, versal_aes_key) key_list = SLIST_HEAD_INITIALIZER(key_list);
+struct versal_aad {
+	struct versal_mbox_mem mem;
+};
+
+struct versal_node {
+	struct versal_payload payload;
+	struct versal_aad aad;
+	bool is_aad;
+	STAILQ_ENTRY(versal_node) link;
+};
+
+struct versal_init {
+	uint32_t key_len;
+	uint32_t operation;
+	struct versal_mbox_mem key;
+	struct versal_mbox_mem nonce;
+	struct versal_mbox_mem init_buf;
+} ;
 
 struct versal_ae_ctx {
 	struct crypto_authenc_ctx a_ctx;
-	struct versal_aes_key *key;
+};
+
+enum engine_state {
+	READY = 1, INIT = 2, FINALIZED = 3,
+};
+
+static struct versal_engine {
+	enum aes_key_src key_src;
+	enum engine_state state;
+	struct versal_init init;
+	struct refcount refc;
+	STAILQ_HEAD(authenc_replay_list, versal_node) replay_list;
+} engine = {
+	.key_src = XSECURE_AES_USER_KEY_0,
 };
 
 static struct versal_ae_ctx *to_versal_ctx(struct crypto_authenc_ctx *ctx)
 {
 	assert(ctx);
-
 	return container_of(ctx, struct versal_ae_ctx, a_ctx);
 }
 
-static TEE_Result do_init(struct drvcrypt_authenc_init *dinit)
+static TEE_Result replay_init(void)
 {
-	struct versal_ae_ctx *c = to_versal_ctx(dinit->ctx);
-	uint32_t key_len = XSECURE_AES_KEY_SIZE_128;
-	struct versal_aes_init *init = NULL;
-	struct versal_mbox_mem init_buf = { };
-	struct versal_mbox_mem p = { };
 	TEE_Result ret = TEE_SUCCESS;
 	struct cmd_args arg = { };
-	uint32_t exceptions = 0;
 
-	if (dinit->key.length != 32 && dinit->key.length != 16)
-		return TEE_ERROR_BAD_PARAMETERS;
-
-	if (dinit->key.length == 32)
-		key_len = XSECURE_AES_KEY_SIZE_256;
-
-	if (c->key)
-		goto init_op;
-
-	exceptions = cpu_spin_lock_xsave(&key_list_lock);
-	if (SLIST_EMPTY(&key_list)) {
-		cpu_spin_unlock_xrestore(&key_list_lock, exceptions);
-		return TEE_ERROR_BUSY;
-	}
-	c->key = SLIST_FIRST(&key_list);
-	SLIST_REMOVE_HEAD(&key_list, link);
-	cpu_spin_unlock_xrestore(&key_list_lock, exceptions);
-
-	/* initialize the AES engine */
 	if (versal_crypto_request(AES_INIT, &arg)) {
 		EMSG("AES_INIT error");
 		return TEE_ERROR_GENERIC;
 	}
 
-	/* write the key */
-	versal_mbox_alloc(dinit->key.length, dinit->key.data, &p);
-
-	arg.data[0] = key_len;
-	arg.data[1] = c->key->id;
+	arg.data[0] = engine.init.key_len;
+	arg.data[1] = engine.key_src;
 	arg.dlen = 2;
-	arg.ibuf[0].buf = p.buf;
-	arg.ibuf[0].len = p.alloc_len;
+	arg.ibuf[0].buf = engine.init.key.buf;
+	arg.ibuf[0].len = engine.init.key.alloc_len;
 
 	if (versal_crypto_request(AES_WRITE_KEY, &arg)) {
 		EMSG("AES_WRITE_KEY error");
@@ -132,22 +133,11 @@ static TEE_Result do_init(struct drvcrypt_authenc_init *dinit)
 	}
 
 	memset(&arg, 0, sizeof(arg));
-	free(p.buf);
-init_op:
-	/* send the initialization structure */
-	versal_mbox_alloc(sizeof(*init), NULL, &init_buf);
-	versal_mbox_alloc(dinit->nonce.length, dinit->nonce.data, &p);
 
-	init = init_buf.buf;
-	init->iv_addr = virt_to_phys(p.buf);
-	init->operation = dinit->encrypt ? XSECURE_ENCRYPT : XSECURE_DECRYPT;
-	init->key_src = c->key->id;
-	init->key_len = key_len;
-
-	arg.ibuf[0].buf = init_buf.buf;
-	arg.ibuf[0].len = init_buf.alloc_len;
-	arg.ibuf[1].buf = p.buf;
-	arg.ibuf[1].len = p.alloc_len;
+	arg.ibuf[0].buf = engine.init.init_buf.buf;
+	arg.ibuf[0].len = engine.init.init_buf.alloc_len;
+	arg.ibuf[1].buf = engine.init.nonce.buf;
+	arg.ibuf[1].len = engine.init.nonce.alloc_len;
 	arg.ibuf[1].only_cache = true;
 
 	if (versal_crypto_request(AES_OP_INIT, &arg)) {
@@ -155,8 +145,156 @@ init_op:
 		ret = TEE_ERROR_GENERIC;
 	}
 out:
-	free(p.buf);
-	free(init);
+	return ret;
+}
+
+static TEE_Result replay_aad(struct versal_aad *p)
+{
+	TEE_Result ret = TEE_SUCCESS;
+	struct cmd_args arg = { };
+
+	arg.data[0] = (p->mem.len % 16) ? p->mem.alloc_len : p->mem.len;
+	arg.dlen = 1;
+	arg.ibuf[0].buf = p->mem.buf;
+	arg.ibuf[0].len = p->mem.alloc_len;
+
+	if (versal_crypto_request(AES_UPDATE_AAD, &arg)) {
+		EMSG("AES_UPDATE_AAD error");
+		ret = TEE_ERROR_GENERIC;
+	}
+
+	return ret;
+}
+
+static TEE_Result replay_payload(struct versal_payload *p)
+{
+	enum versal_crypto_api id = AES_DECRYPT_UPDATE;
+	struct versal_aes_input_param *input = NULL;
+	TEE_Result ret = TEE_SUCCESS;
+	struct cmd_args arg = { };
+
+	input = p->input_cmd.buf;
+	input->input_addr = virt_to_phys(p->src.buf);
+	input->input_len = p->src.len;
+	input->is_last = 0;
+
+	arg.ibuf[0].buf = p->input_cmd.buf;
+	arg.ibuf[0].len = p->input_cmd.alloc_len;
+	arg.ibuf[1].buf = p->dst.buf;
+	arg.ibuf[1].len = p->dst.alloc_len;
+	arg.ibuf[2].buf = p->src.buf;
+	arg.ibuf[2].len = p->src.alloc_len;
+
+	if (p->encrypt)
+		id = AES_ENCRYPT_UPDATE;
+
+	if (versal_crypto_request(id, &arg)) {
+		EMSG("AES_UPDATE_PAYLOAD error");
+		ret = TEE_ERROR_GENERIC;
+	}
+
+	return ret;
+}
+
+static TEE_Result do_replay(void)
+{
+	struct versal_node *node = NULL;
+	TEE_Result ret = TEE_SUCCESS;
+
+	ret = replay_init();
+	if (ret)
+		return ret;
+
+	STAILQ_FOREACH(node, &engine.replay_list, link) {
+		if (node->is_aad) {
+			ret = replay_aad(&node->aad);
+			if (ret)
+				return ret;
+		} else {
+			ret = replay_payload(&node->payload);
+			if (ret)
+				return ret;
+		}
+	}
+
+	/* engine has been init */
+	engine.state = INIT;
+
+	return ret;
+}
+
+static TEE_Result do_init(struct drvcrypt_authenc_init *dinit)
+{
+	uint32_t key_len = XSECURE_AES_KEY_SIZE_128;
+	struct versal_aes_init *init = NULL;
+	struct versal_mbox_mem init_buf = { };
+	struct versal_mbox_mem key = { };
+	struct versal_mbox_mem nonce = { };
+	TEE_Result ret = TEE_SUCCESS;
+	struct cmd_args arg = { };
+
+	if (dinit->key.length != 32 && dinit->key.length != 16)
+		return TEE_ERROR_BAD_PARAMETERS;
+
+	if (dinit->key.length == 32)
+		key_len = XSECURE_AES_KEY_SIZE_256;
+
+	if (engine.state != READY)
+		return TEE_ERROR_BAD_STATE;
+
+	/* initialize the AES engine */
+	if (versal_crypto_request(AES_INIT, &arg)) {
+		EMSG("AES_INIT error");
+		return TEE_ERROR_GENERIC;
+	}
+
+	/* write the key */
+	versal_mbox_alloc(dinit->key.length, dinit->key.data, &key);
+
+	arg.data[0] = key_len;
+	arg.data[1] = engine.key_src;
+	arg.dlen = 2;
+	arg.ibuf[0].buf = key.buf;
+	arg.ibuf[0].len = key.alloc_len;
+
+	if (versal_crypto_request(AES_WRITE_KEY, &arg)) {
+		EMSG("AES_WRITE_KEY error");
+		ret = TEE_ERROR_GENERIC;
+		goto out;
+	}
+
+	memset(&arg, 0, sizeof(arg));
+
+	/* send the initialization structure */
+	versal_mbox_alloc(sizeof(*init), NULL, &init_buf);
+	versal_mbox_alloc(dinit->nonce.length, dinit->nonce.data, &nonce);
+
+	init = init_buf.buf;
+	init->iv_addr = virt_to_phys(nonce.buf);
+	init->operation = dinit->encrypt ? XSECURE_ENCRYPT : XSECURE_DECRYPT;
+	init->key_src = engine.key_src;
+	init->key_len = key_len;
+
+	arg.ibuf[0].buf = init_buf.buf;
+	arg.ibuf[0].len = init_buf.alloc_len;
+	arg.ibuf[1].buf = nonce.buf;
+	arg.ibuf[1].len = nonce.alloc_len;
+	arg.ibuf[1].only_cache = true;
+
+	if (versal_crypto_request(AES_OP_INIT, &arg)) {
+		EMSG("AES_OP_INIT error");
+		ret = TEE_ERROR_GENERIC;
+	}
+out:
+	/* save key context */
+	engine.init.operation = dinit->encrypt ? XSECURE_ENCRYPT : XSECURE_DECRYPT;
+	engine.init.key_len = key_len;
+	engine.init.init_buf = init_buf;
+	engine.init.nonce = nonce;
+	engine.init.key = key;
+
+	/* engine has been init*/
+	engine.state = INIT;
 
 	return ret;
 }
@@ -166,20 +304,36 @@ static TEE_Result do_update_aad(struct drvcrypt_authenc_update_aad *dupdate)
 	struct versal_mbox_mem p = { };
 	TEE_Result ret = TEE_SUCCESS;
 	struct cmd_args arg = { };
+	struct versal_node *node = NULL;
+
+	/* if there is a copy, we dont allow updates, only finalize */
+	if (refcount_val(&engine.refc) > 1)
+		return TEE_ERROR_BUSY;
+
+	/* if there was a copy and it was finalized, we need to replay */
+	if (engine.state == FINALIZED)
+		do_replay();
 
 	versal_mbox_alloc(dupdate->aad.length, dupdate->aad.data, &p);
 
-	arg.data[0] = (dupdate->aad.length % 16) ? p.alloc_len : p.len;
+	arg.data[0] = (p.len % 16) ? p.alloc_len : p.len;
 	arg.dlen = 1;
 	arg.ibuf[0].buf = p.buf;
 	arg.ibuf[0].len = p.alloc_len;
 
 	if (versal_crypto_request(AES_UPDATE_AAD, &arg)) {
-		EMSG("AES_UPDATE_AAD error");
+		EMSG("AES_UPDATE_AAD error (len = %ld)", dupdate->aad.length);
 		ret = TEE_ERROR_GENERIC;
 	}
 
-	free(p.buf);
+	node = calloc(1, sizeof(*node));
+	if (!node)
+		return TEE_ERROR_OUT_OF_MEMORY;
+
+	/* save the context */
+	node->aad.mem = p;
+	node->is_aad = true;
+	STAILQ_INSERT_TAIL(&engine.replay_list, node, link);
 
 	return ret;
 }
@@ -194,6 +348,7 @@ static TEE_Result update_payload(struct drvcrypt_authenc_update_payload
 	struct versal_mbox_mem q = { };
 	TEE_Result ret = TEE_SUCCESS;
 	struct cmd_args arg = { };
+	struct versal_node *node = NULL;
 
 	versal_mbox_alloc(dupdate->src.length, dupdate->src.data, &p);
 	versal_mbox_alloc(dupdate->dst.length, NULL, &q);
@@ -201,7 +356,7 @@ static TEE_Result update_payload(struct drvcrypt_authenc_update_payload
 
 	input = input_cmd.buf;
 	input->input_addr = virt_to_phys(p.buf);
-	input->input_len = dupdate->src.length;
+	input->input_len = (p.len % 4) ? ROUNDUP(p.len, 4) : p.len;
 	input->is_last = is_last;
 
 	arg.ibuf[0].buf = input;
@@ -215,22 +370,52 @@ static TEE_Result update_payload(struct drvcrypt_authenc_update_payload
 		id = AES_ENCRYPT_UPDATE;
 
 	if (versal_crypto_request(id, &arg)) {
-		EMSG("AES_UPDATE_PAYLOAD error");
+		EMSG("AES_UPDATE_PLD error (len = %ld)", dupdate->src.length);
 		ret = TEE_ERROR_GENERIC;
 		goto out;
 	}
 
 	memcpy(dupdate->dst.data, q.buf, dupdate->dst.length);
-out:
-	free(p.buf);
-	free(q.buf);
-	free(input);
 
+	/* save the context */
+	if (!is_last) {
+		node = calloc(1, sizeof(*node));
+		if (!node)
+			return TEE_ERROR_OUT_OF_MEMORY;
+
+		node->is_aad = false;
+		node->payload.dst = q;
+		node->payload.src = p;
+		node->payload.input_cmd = input_cmd;
+		node->payload.encrypt = dupdate->encrypt;
+		STAILQ_INSERT_TAIL(&engine.replay_list, node, link);
+	} else {
+		free(p.buf);
+		free(q.buf);
+		free(input_cmd.buf);
+	}
+out:
 	return ret;
 }
 
 static TEE_Result do_update_payload(struct drvcrypt_authenc_update_payload *p)
 {
+	TEE_Result ret = TEE_SUCCESS;
+	/* If there is a copy, we dont allow updates until one of the copies
+	 * has been deleted
+	 */
+	if (refcount_val(&engine.refc) > 1)
+		return TEE_ERROR_BUSY;
+
+	/* if there was a copy and it was finalized, we need to replay before
+	 * we can update; do not clear the list so the state can be copied
+	 */
+	if (engine.state == FINALIZED) {
+		ret = do_replay();
+		if (ret)
+			return ret;
+	}
+
 	return update_payload(p, false);
 }
 
@@ -240,6 +425,16 @@ static TEE_Result do_enc_final(struct drvcrypt_authenc_final *dfinal)
 	struct versal_mbox_mem p = { };
 	TEE_Result ret = TEE_SUCCESS;
 	struct cmd_args arg = { };
+
+	if (engine.state == FINALIZED) {
+		DMSG("Operation was already finalized");
+		ret = do_replay();
+		if (ret)
+			return ret;
+	}
+
+	if (engine.state != INIT)
+		panic();
 
 	last.ctx = dfinal->ctx;
 	last.dst = dfinal->dst;
@@ -267,6 +462,11 @@ static TEE_Result do_enc_final(struct drvcrypt_authenc_final *dfinal)
 out:
 	free(p.buf);
 
+	if (refcount_val(&engine.refc) > 1)
+		engine.state = FINALIZED;
+	else
+		engine.state = READY;
+
 	return ret;
 }
 
@@ -276,6 +476,16 @@ static TEE_Result do_dec_final(struct drvcrypt_authenc_final *dfinal)
 	struct versal_mbox_mem p = { };
 	TEE_Result ret = TEE_SUCCESS;
 	struct cmd_args arg = { };
+
+	if (engine.state == FINALIZED) {
+		DMSG("Operation was already finalized");
+		ret = do_replay();
+		if (ret)
+			return ret;
+	}
+
+	if (engine.state != INIT)
+		panic();
 
 	last.ctx = dfinal->ctx;
 	last.dst = dfinal->dst;
@@ -302,6 +512,11 @@ static TEE_Result do_dec_final(struct drvcrypt_authenc_final *dfinal)
 out:
 	free(p.buf);
 
+	if (refcount_val(&engine.refc) > 1)
+		engine.state = FINALIZED;
+	else
+		engine.state = READY;
+
 	return ret;
 }
 
@@ -312,27 +527,34 @@ static void do_final(void *ctx)
 static void do_free(void *ctx)
 {
 	struct versal_ae_ctx *c = to_versal_ctx(ctx);
-	uint32_t exceptions = 0;
+	struct versal_node *node = NULL;
 
-	exceptions = cpu_spin_lock_xsave(&key_list_lock);
-
-	if (refcount_dec(&c->key->refc)) {
-		refcount_set(&c->key->refc, 1);
-		SLIST_INSERT_HEAD(&key_list, c->key, link);
+	if (refcount_dec(&engine.refc)) {
+		refcount_set(&engine.refc, 1);
+		engine.state = READY;
+		free(engine.init.init_buf.buf);
+		free(engine.init.nonce.buf);
+		free(engine.init.key.buf);
+		memset(&engine.init, 0, sizeof(engine.init));
+		STAILQ_FOREACH(node, &engine.replay_list, link) {
+			STAILQ_REMOVE(&engine.replay_list, node, versal_node, link);
+			if (node->is_aad) {
+				free(node->aad.mem.buf);
+			} else {
+				free(node->payload.dst.buf);
+				free(node->payload.src.buf);
+				free(node->payload.input_cmd.buf);
+			}
+			free(node);
+		}
 	}
-
-	cpu_spin_unlock_xrestore(&key_list_lock, exceptions);
 
 	free(c);
 }
 
 static void do_copy_state(void *dst_ctx, void *src_ctx)
 {
-	struct versal_ae_ctx *src = to_versal_ctx(src_ctx);
-	struct versal_ae_ctx *dst = to_versal_ctx(dst_ctx);
-
-	memcpy(dst, src, sizeof(*dst));
-	refcount_inc(&src->key->refc);
+	refcount_inc(&engine.refc);
 }
 
 static TEE_Result do_allocate(void **ctx, uint32_t algo)
@@ -404,30 +626,19 @@ static TEE_Result enable_secure_status(void)
 
 static TEE_Result versal_register_authenc(void)
 {
-	const uint32_t user_keys[] = {
-		XSECURE_AES_USER_KEY_0, XSECURE_AES_USER_KEY_1,
-		XSECURE_AES_USER_KEY_2, XSECURE_AES_USER_KEY_3,
-		XSECURE_AES_USER_KEY_4, XSECURE_AES_USER_KEY_5,
-		XSECURE_AES_USER_KEY_6, XSECURE_AES_USER_KEY_7,
-	};
-	struct versal_aes_key *key = NULL;
 	TEE_Result ret = TEE_SUCCESS;
-	size_t i = 0;
 
 	ret = drvcrypt_register_authenc(&versal_authenc);
 	if (ret)
 		return ret;
 
-	for (i = 0; i < ARRAY_SIZE(user_keys); i++) {
-		key = calloc(1, sizeof (*key));
-		if (!key)
-			return TEE_ERROR_OUT_OF_MEMORY;
+	if (engine.key_src < XSECURE_AES_USER_KEY_0 ||
+	    engine.key_src > XSECURE_AES_USER_KEY_7)
+		return TEE_ERROR_GENERIC;
 
-		key->id = user_keys[i];
-		refcount_set(&key->refc, 1);
-		SLIST_INSERT_HEAD(&key_list, key, link);
-	}
-
+	engine.state = READY;
+	STAILQ_INIT(&engine.replay_list);
+	refcount_set(&engine.refc, 1);
 
 	return enable_secure_status();
 }

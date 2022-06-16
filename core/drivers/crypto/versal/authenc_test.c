@@ -182,19 +182,6 @@ static TEE_Result test_authenc_enc(void)
 		return ret;
 	}
 
-	/* ONLY ONE BLOCK
-	 *  therefore we cant send an update, needs to be done in a final call
-	 *  compile it out
-	 */
-#if 0
-
-	ret = crypto_authenc_update_payload(ctx, TEE_MODE_ENCRYPT,
-					    Data, XSECURE_DATA_SIZE);
-	if (ret) {
-		EMSG("%s %d", __func__, __LINE__);
-		return ret;
-	}
-#endif
 	ret = crypto_authenc_enc_final(ctx,
 			Data, XSECURE_DATA_SIZE,
 			EncData, &enc_len,
@@ -215,15 +202,27 @@ static TEE_Result test_authenc_dec(void)
 	size_t tag_len = XSECURE_GCM_TAG_SIZE;
 	size_t dec_len = XSECURE_DATA_SIZE;
 	TEE_Result ret = TEE_SUCCESS;
-	void *ctx;
+	void *ctx1, *ctx2, *ctx3;
 
-	ret = crypto_authenc_alloc_ctx(&ctx, TEE_ALG_AES_GCM);
+	ret = crypto_authenc_alloc_ctx(&ctx1, TEE_ALG_AES_GCM);
 	if (ret) {
 		EMSG("%s %d", __func__, __LINE__);
 		return ret;
 	}
 
-	ret = crypto_authenc_init(ctx, TEE_MODE_DECRYPT,
+	ret = crypto_authenc_alloc_ctx(&ctx2, TEE_ALG_AES_GCM);
+	if (ret) {
+		EMSG("%s %d", __func__, __LINE__);
+		return ret;
+	}
+
+	ret = crypto_authenc_alloc_ctx(&ctx3, TEE_ALG_AES_GCM);
+	if (ret) {
+		EMSG("%s %d", __func__, __LINE__);
+		return ret;
+	}
+
+	ret = crypto_authenc_init(ctx1, TEE_MODE_DECRYPT,
 				  Key, XSECURE_KEY_SIZE,
 				  Iv, XSECURE_IV_SIZE,
 				  TEE_AES_BLOCK_SIZE, 0, 0);
@@ -232,14 +231,18 @@ static TEE_Result test_authenc_dec(void)
 		return ret;
 	}
 
-	ret = crypto_authenc_update_aad(ctx, TEE_MODE_ENCRYPT,
+	ret = crypto_authenc_update_aad(ctx1, TEE_MODE_ENCRYPT,
 					Aad, XSECURE_AAD_SIZE);
 	if (ret) {
 		EMSG("%s %d", __func__, __LINE__);
 		return ret;
 	}
 
-	ret = crypto_authenc_dec_final(ctx,
+	/* copy the states and finalize them separately */
+	crypto_authenc_copy_state(ctx2, ctx1);
+	crypto_authenc_copy_state(ctx3, ctx2);
+
+	ret = crypto_authenc_dec_final(ctx1,
 				       EncData, XSECURE_DATA_SIZE,
 				       DecData, &dec_len,
 				       Tag, tag_len);
@@ -248,8 +251,32 @@ static TEE_Result test_authenc_dec(void)
 		return ret;
 	}
 
-	crypto_authenc_final(ctx);
-	crypto_authenc_free_ctx(ctx);
+	memset(DecData, 0, dec_len);
+	ret = crypto_authenc_dec_final(ctx2,
+				       EncData, XSECURE_DATA_SIZE,
+				       DecData, &dec_len,
+				       Tag, tag_len);
+	if (ret) {
+		EMSG("%s %d", __func__, __LINE__);
+		return ret;
+	}
+
+	memset(DecData, 0, dec_len);
+	ret = crypto_authenc_dec_final(ctx3,
+				       EncData, XSECURE_DATA_SIZE,
+				       DecData, &dec_len,
+				       Tag, tag_len);
+	if (ret) {
+		EMSG("%s %d", __func__, __LINE__);
+		return ret;
+	}
+
+	crypto_authenc_final(ctx1);
+	crypto_authenc_free_ctx(ctx1);
+	crypto_authenc_final(ctx2);
+	crypto_authenc_free_ctx(ctx2);
+	crypto_authenc_final(ctx3);
+	crypto_authenc_free_ctx(ctx3);
 
 	return TEE_SUCCESS;
 }
