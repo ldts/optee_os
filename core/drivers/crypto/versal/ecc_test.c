@@ -24,7 +24,6 @@ static struct ecc_public_key key = { };
 
 /* size for TEE_ALG_ECDSA_P384 */
 #define TEE_ALG_ECDSA_P384_SIG_LEN 96
-
 size_t sig_len = TEE_ALG_ECDSA_P384_SIG_LEN;
 uint8_t sig[TEE_ALG_ECDSA_P384_SIG_LEN];
 uint8_t msg[48] = {
@@ -36,17 +35,53 @@ uint8_t msg[48] = {
 	0x1BU, 0x6EU, 0x4FU, 0x1CU, 0x7DU, 0x18U, 0xEAU, 0x5AU,
 };
 
-static void crypto_bignum_bn2bin_eswap(struct bignum *from, uint8_t *to)
+
+/* size for TEE_ALG_ECDSA_P521 */
+#define TEE_ALG_ECDSA_P521_SIG_LEN 132
+size_t sig_len_521 = TEE_ALG_ECDSA_P521_SIG_LEN;
+uint8_t sig_521[TEE_ALG_ECDSA_P521_SIG_LEN];
+uint8_t hash521[66] = {
+	0x32U, 0xF9U, 0xE1U, 0x0BU, 0xE6U, 0x1DU, 0xF7U, 0xB6U,
+	0xA8U, 0x67U, 0x17U, 0x58U, 0x8EU, 0x6DU, 0xD6U, 0xC0U,
+	0x72U, 0x91U, 0xCDU, 0xDDU, 0x6CU, 0xBDU, 0xBEU, 0x2FU,
+	0x13U, 0xFAU, 0x02U, 0x5BU, 0x02U, 0x90U, 0xAFU, 0x32U,
+	0x5DU, 0x20U, 0x09U, 0xA7U, 0x1CU, 0x2CU, 0x58U, 0x94U,
+	0x9FU, 0xBBU, 0x75U, 0xDCU, 0xE1U, 0x8DU, 0x36U, 0xD7U,
+	0xCEU, 0xB1U, 0xB6U, 0x7CU, 0x7FU, 0xB7U, 0x25U, 0xF9U,
+	0x00U, 0x1EU, 0xA3U, 0xEDU, 0xDEU, 0xE1U, 0xF0U, 0x9BU,
+	0x00U, 0x00U,
+};
+
+static void crypto_bignum_bn2bin_eswap(uint32_t curve,
+				       struct bignum *from, uint8_t *to)
 {
 	uint8_t tmp = 0;
+	uint8_t pad[66] = { };
 	size_t i = 0;
 	size_t j = 0;
+	size_t len = crypto_bignum_num_bytes(from);
 
-	crypto_bignum_bn2bin(from, to);
-	for(i = 0, j = crypto_bignum_num_bytes(from) - 1; i < j; i++, j--) {
-		tmp = to[i];
-		to[i] = to[j];
-		to[j] = tmp;
+	switch (curve) {
+	case TEE_ECC_CURVE_NIST_P384:
+		crypto_bignum_bn2bin(from, pad + 48 - len);
+		for (i = 0, j = 48 - 1; i < j; i++, j--) {
+			tmp = pad[i];
+			pad[i] = pad[j];
+			pad[j] = tmp;
+		}
+		memcpy(to, pad, 48);
+		break;
+	case TEE_ECC_CURVE_NIST_P521:
+		crypto_bignum_bn2bin(from, pad + 66 - len);
+		for (i = 0, j = 66 - 1; i < j; i++, j--) {
+			tmp = pad[i];
+			pad[i] = pad[j];
+			pad[j] = tmp;
+		}
+		memcpy(to, pad, 66);
+		break;
+	default:
+		panic();
 	}
 }
 
@@ -76,52 +111,28 @@ static TEE_Result test_validate_keypair_gen(void)
 		return ret;
 
 	keypair.curve = TEE_ECC_CURVE_NIST_P384;
-
 	ret = crypto_acipher_gen_ecc_key(&keypair, 1024);
 	if (ret)
 		return ret;
 
-	versal_mbox_alloc(crypto_bignum_num_bytes(keypair.x) +
-			    crypto_bignum_num_bytes(keypair.y), NULL, &p);
-
-	crypto_bignum_bn2bin_eswap(keypair.x, p.buf);
-	crypto_bignum_bn2bin_eswap(keypair.y, (uint8_t *)
-				   p.buf + crypto_bignum_num_bytes(keypair.x));
-
+	versal_mbox_alloc(48 * 2, NULL, &p);
+	crypto_bignum_bn2bin_eswap(TEE_ECC_CURVE_NIST_P384, keypair.x, p.buf);
+	crypto_bignum_bn2bin_eswap(TEE_ECC_CURVE_NIST_P384, keypair.y, (uint8_t *)
+				   p.buf + 48);
 	arg.data[0] = TEE_ECC_CURVE_NIST_P384;
 	arg.dlen = 1;
 	arg.ibuf[0].buf = p.buf;
 	arg.ibuf[0].len = p.alloc_len;
 
-	if (!versal_crypto_request(ELLIPTIC_VALIDATE_PUBLIC_KEY, &arg))
-		goto public;
+	if (versal_crypto_request(ELLIPTIC_VALIDATE_PUBLIC_KEY, &arg, NULL))
+		panic();
 
-	ret = TEE_ERROR_GENERIC;
-
-	qlen = crypto_bignum_num_bytes(keypair.d);
-	q = calloc(1, qlen);
-	if (!q)
-		return TEE_ERROR_GENERIC;
-
-	crypto_bignum_bn2bin(keypair.d, q);
-#if 0
-	IMSG("Privat Key: d = %ld", crypto_bignum_num_bytes(keypair.d));
-	DHEXDUMP(q, qlen);
-
-	IMSG("Public Key: x = %ld", crypto_bignum_num_bytes(keypair.x));
-	DHEXDUMP(p, crypto_bignum_num_bytes(keypair.x));
-
-	IMSG("Public Key: y = %ld", crypto_bignum_num_bytes(keypair.y));
-	DHEXDUMP( (uint8_t *)p + crypto_bignum_num_bytes(keypair.x),
-		 crypto_bignum_num_bytes(keypair.y));
-#endif
-public:
 	/*
 	 * Create a public key for the private key so we can verify on the
 	 * next test in the sequence
 	 */
 	if (drvcrypt_asym_alloc_ecc_public_key(&key, TEE_TYPE_ECDSA_PUBLIC_KEY,
-		1024)) {
+					       1024)) {
 		/* panic since there is no reason to test further */
 		panic();
 	}
@@ -135,14 +146,81 @@ public:
 	return ret;
 }
 
+static TEE_Result test_generate_signature_521(void)
+{
+	return keypair.ops->sign(TEE_ALG_ECDSA_P521, &keypair,
+				 hash521, sizeof(hash521),
+				 sig_521, &sig_len_521);
+}
+
+static TEE_Result test_validate_signature_521(void)
+{
+	return key.ops->verify(TEE_ALG_ECDSA_P521, &key,
+			       hash521, sizeof(hash521),
+			       sig_521, sig_len_521);
+}
+
+static TEE_Result test_validate_keypair_gen_521(void)
+{
+	TEE_Result ret = TEE_SUCCESS;
+	struct cmd_args arg = { };
+	struct versal_mbox_mem p = { };
+	void *q = NULL;
+	size_t qlen = 0;
+
+	ret = drvcrypt_asym_alloc_ecc_keypair(&keypair,
+					      TEE_TYPE_ECDSA_KEYPAIR, 4096);
+	if (ret)
+		return ret;
+
+	keypair.curve = TEE_ECC_CURVE_NIST_P521;
+	ret = crypto_acipher_gen_ecc_key(&keypair, 4096);
+	if (ret)
+		return ret;
+
+	versal_mbox_alloc(66 * 2, NULL, &p);
+	crypto_bignum_bn2bin_eswap(TEE_ECC_CURVE_NIST_P521,
+				   keypair.x, p.buf);
+	crypto_bignum_bn2bin_eswap(TEE_ECC_CURVE_NIST_P521,
+				   keypair.y, p.buf + 66);
+
+	arg.data[0] = TEE_ECC_CURVE_NIST_P521;
+	arg.dlen = 1;
+	arg.ibuf[0].buf = p.buf;
+	arg.ibuf[0].len = p.alloc_len;
+	if (versal_crypto_request(ELLIPTIC_VALIDATE_PUBLIC_KEY, &arg, NULL))
+		panic();
+
+	/*
+	 * Create a public key for the private key so we can verify on the
+	 * next test in the sequence
+	 */
+	if (drvcrypt_asym_alloc_ecc_public_key(&key, TEE_TYPE_ECDSA_PUBLIC_KEY,
+		4096)) {
+		/* panic since there is no reason to test further */
+		panic();
+	}
+
+	key.curve = TEE_ECC_CURVE_NIST_P521;
+	key.x = keypair.x;
+	key.y = keypair.y;
+	free(q);
+	free(p.buf);
+
+	return ret;
+}
+
 static struct {
 	TEE_Result (*f)(void);
 	const char *name;
 	bool failed;
 } test[] = {
 	{ .f = test_validate_keypair_gen, .name = STR(ecc gen pair), },
-	{ .f = test_generate_signature,   .name = STR(ecc gen sign), },
-	{ .f = test_validate_signature,   .name = STR(ecc ver sign), },
+	{ .f = test_generate_signature,   .name = STR(ecc gen sign384), },
+	{ .f = test_validate_signature,   .name = STR(ecc ver sign384), },
+	{ .f = test_validate_keypair_gen_521, .name = STR(ecc gen pair521), },
+	{ .f = test_generate_signature_521,   .name = STR(ecc gen sign521), },
+	{ .f = test_validate_signature_521,   .name = STR(ecc ver sign521), },
 };
 
 static TEE_Result versal_crypto_test(void)

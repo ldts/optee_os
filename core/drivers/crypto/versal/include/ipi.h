@@ -91,6 +91,6 @@ struct cmd_args {
 };
 
 TEE_Result versal_crypto_request(enum versal_crypto_api id,
-				 struct cmd_args *arg);
+				 struct cmd_args *arg, uint32_t *err);
 #endif
 

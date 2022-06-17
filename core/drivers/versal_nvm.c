@@ -126,12 +126,13 @@ static TEE_Result efuse_req(enum versal_nvm_api_id efuse, struct ipi_buf *ibufs,
 {
 	TEE_Result ret = TEE_SUCCESS;
 	struct ipi_cmd cmd = { };
+	uint32_t err = 0;
 
 	ret = prepare_cmd(&cmd, efuse, ibufs, arg);
 	if (ret)
 		return ret;
 
-	ret = versal_mbox_notify(&cmd, NULL);
+	ret = versal_mbox_notify(&cmd, NULL, NULL);
 	if (ret)
 		EMSG("Mailbox error");
 

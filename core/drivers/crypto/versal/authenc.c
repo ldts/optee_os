@@ -114,8 +114,9 @@ static TEE_Result replay_init(void)
 {
 	TEE_Result ret = TEE_SUCCESS;
 	struct cmd_args arg = { };
+	uint32_t err = 0;
 
-	if (versal_crypto_request(AES_INIT, &arg)) {
+	if (versal_crypto_request(AES_INIT, &arg, &err)) {
 		EMSG("AES_INIT error");
 		return TEE_ERROR_GENERIC;
 	}
@@ -126,7 +127,7 @@ static TEE_Result replay_init(void)
 	arg.ibuf[0].buf = engine.init.key.buf;
 	arg.ibuf[0].len = engine.init.key.alloc_len;
 
-	if (versal_crypto_request(AES_WRITE_KEY, &arg)) {
+	if (versal_crypto_request(AES_WRITE_KEY, &arg, &err)) {
 		EMSG("AES_WRITE_KEY error");
 		ret = TEE_ERROR_GENERIC;
 		goto out;
@@ -140,7 +141,7 @@ static TEE_Result replay_init(void)
 	arg.ibuf[1].len = engine.init.nonce.alloc_len;
 	arg.ibuf[1].only_cache = true;
 
-	if (versal_crypto_request(AES_OP_INIT, &arg)) {
+	if (versal_crypto_request(AES_OP_INIT, &arg, &err)) {
 		EMSG("AES_OP_INIT error");
 		ret = TEE_ERROR_GENERIC;
 	}
@@ -152,13 +153,14 @@ static TEE_Result replay_aad(struct versal_aad *p)
 {
 	TEE_Result ret = TEE_SUCCESS;
 	struct cmd_args arg = { };
+	uint32_t err = 0;
 
 	arg.data[0] = (p->mem.len % 16) ? p->mem.alloc_len : p->mem.len;
 	arg.dlen = 1;
 	arg.ibuf[0].buf = p->mem.buf;
 	arg.ibuf[0].len = p->mem.alloc_len;
 
-	if (versal_crypto_request(AES_UPDATE_AAD, &arg)) {
+	if (versal_crypto_request(AES_UPDATE_AAD, &arg, &err)) {
 		EMSG("AES_UPDATE_AAD error");
 		ret = TEE_ERROR_GENERIC;
 	}
@@ -171,6 +173,7 @@ static TEE_Result replay_payload(struct versal_payload *p)
 	enum versal_crypto_api id = AES_DECRYPT_UPDATE;
 	TEE_Result ret = TEE_SUCCESS;
 	struct cmd_args arg = { };
+	uint32_t err = 0;
 
 	arg.ibuf[0].buf = p->input_cmd.buf;
 	arg.ibuf[0].len = p->input_cmd.alloc_len;
@@ -182,7 +185,7 @@ static TEE_Result replay_payload(struct versal_payload *p)
 	if (p->encrypt)
 		id = AES_ENCRYPT_UPDATE;
 
-	if (versal_crypto_request(id, &arg)) {
+	if (versal_crypto_request(id, &arg, &err)) {
 		EMSG("AES_UPDATE_PAYLOAD error");
 		ret = TEE_ERROR_GENERIC;
 	}
@@ -226,6 +229,7 @@ static TEE_Result do_init(struct drvcrypt_authenc_init *dinit)
 	struct versal_mbox_mem nonce = { };
 	TEE_Result ret = TEE_SUCCESS;
 	struct cmd_args arg = { };
+	uint32_t err = 0;
 
 	if (dinit->key.length != 32 && dinit->key.length != 16)
 		return TEE_ERROR_BAD_PARAMETERS;
@@ -237,7 +241,7 @@ static TEE_Result do_init(struct drvcrypt_authenc_init *dinit)
 		return TEE_ERROR_BAD_STATE;
 
 	/* initialize the AES engine */
-	if (versal_crypto_request(AES_INIT, &arg)) {
+	if (versal_crypto_request(AES_INIT, &arg, &err)) {
 		EMSG("AES_INIT error");
 		return TEE_ERROR_GENERIC;
 	}
@@ -251,7 +255,7 @@ static TEE_Result do_init(struct drvcrypt_authenc_init *dinit)
 	arg.ibuf[0].buf = key.buf;
 	arg.ibuf[0].len = key.alloc_len;
 
-	if (versal_crypto_request(AES_WRITE_KEY, &arg)) {
+	if (versal_crypto_request(AES_WRITE_KEY, &arg, &err)) {
 		EMSG("AES_WRITE_KEY error");
 		ret = TEE_ERROR_GENERIC;
 		goto out;
@@ -275,7 +279,7 @@ static TEE_Result do_init(struct drvcrypt_authenc_init *dinit)
 	arg.ibuf[1].len = nonce.alloc_len;
 	arg.ibuf[1].only_cache = true;
 
-	if (versal_crypto_request(AES_OP_INIT, &arg)) {
+	if (versal_crypto_request(AES_OP_INIT, &arg, &err)) {
 		EMSG("AES_OP_INIT error");
 		ret = TEE_ERROR_GENERIC;
 	}
@@ -299,6 +303,7 @@ static TEE_Result do_update_aad(struct drvcrypt_authenc_update_aad *dupdate)
 	TEE_Result ret = TEE_SUCCESS;
 	struct cmd_args arg = { };
 	struct versal_node *node = NULL;
+	uint32_t err = 0;
 
 	if (dupdate->aad.length % 16)
 		return TEE_ERROR_BAD_PARAMETERS;
@@ -318,7 +323,7 @@ static TEE_Result do_update_aad(struct drvcrypt_authenc_update_aad *dupdate)
 	arg.ibuf[0].buf = p.buf;
 	arg.ibuf[0].len = p.alloc_len;
 
-	if (versal_crypto_request(AES_UPDATE_AAD, &arg)) {
+	if (versal_crypto_request(AES_UPDATE_AAD, &arg, &err)) {
 		EMSG("AES_UPDATE_AAD error");
 		ret = TEE_ERROR_GENERIC;
 	}
@@ -346,6 +351,7 @@ static TEE_Result update_payload(struct drvcrypt_authenc_update_payload
 	TEE_Result ret = TEE_SUCCESS;
 	struct cmd_args arg = { };
 	struct versal_node *node = NULL;
+	uint32_t err = 0;
 
 	if (dupdate->src.length % 4)
 		return TEE_ERROR_BAD_PARAMETERS;
@@ -369,7 +375,7 @@ static TEE_Result update_payload(struct drvcrypt_authenc_update_payload
 	if (dupdate->encrypt)
 		id = AES_ENCRYPT_UPDATE;
 
-	if (versal_crypto_request(id, &arg)) {
+	if (versal_crypto_request(id, &arg, &err)) {
 		EMSG("AES_UPDATE_PAYLOAD error ");
 		ret = TEE_ERROR_GENERIC;
 		goto out;
@@ -425,6 +431,7 @@ static TEE_Result do_enc_final(struct drvcrypt_authenc_final *dfinal)
 	struct versal_mbox_mem p = { };
 	TEE_Result ret = TEE_SUCCESS;
 	struct cmd_args arg = { };
+	uint32_t err = 0;
 
 	if (engine.state == FINALIZED) {
 		DMSG("Operation was already finalized");
@@ -451,7 +458,7 @@ static TEE_Result do_enc_final(struct drvcrypt_authenc_final *dfinal)
 
 	arg.ibuf[0].buf = p.buf;
 	arg.ibuf[0].len = p.alloc_len;
-	if (versal_crypto_request(AES_ENCRYPT_FINAL, &arg)) {
+	if (versal_crypto_request(AES_ENCRYPT_FINAL, &arg, &err)) {
 		EMSG("AES_ENCRYPT_FINAL error");
 		ret = TEE_ERROR_GENERIC;
 		goto out;
@@ -476,6 +483,7 @@ static TEE_Result do_dec_final(struct drvcrypt_authenc_final *dfinal)
 	struct versal_mbox_mem p = { };
 	TEE_Result ret = TEE_SUCCESS;
 	struct cmd_args arg = { };
+	uint32_t err = 0;
 
 	if (engine.state == FINALIZED) {
 		DMSG("Operation was already finalized");
@@ -500,7 +508,7 @@ static TEE_Result do_dec_final(struct drvcrypt_authenc_final *dfinal)
 	arg.ibuf[0].buf = p.buf;
 	arg.ibuf[0].len = p.alloc_len;
 
-	if (versal_crypto_request(AES_DECRYPT_FINAL, &arg)) {
+	if (versal_crypto_request(AES_DECRYPT_FINAL, &arg, &err)) {
 		EMSG("AES_DECRYPT_FINAL error");
 		ret = TEE_ERROR_GENERIC;
 		goto out;

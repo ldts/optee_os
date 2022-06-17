@@ -255,7 +255,8 @@ TEE_Result versal_mbox_alloc(size_t len, const void *init,
 	return TEE_SUCCESS;
 }
 
-TEE_Result versal_mbox_notify(struct ipi_cmd *cmd, struct ipi_cmd *rsp)
+TEE_Result versal_mbox_notify(struct ipi_cmd *cmd, struct ipi_cmd *rsp,
+			      uint32_t *err)
 {
 	TEE_Result ret = TEE_SUCCESS;
 	uint32_t remote_status = 0;
@@ -282,6 +283,8 @@ TEE_Result versal_mbox_notify(struct ipi_cmd *cmd, struct ipi_cmd *rsp)
 		EMSG("Can't read the remote response");
 
 	if (remote_status) {
+		if (err)
+			*err = remote_status;
 		/* Check xplmi_status.h in the PLM code (hundreds of types) */
 		EMSG("PLM (err=0x%x)", remote_status >> 16);
 		ret = TEE_ERROR_GENERIC;

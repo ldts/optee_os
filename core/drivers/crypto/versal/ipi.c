@@ -41,7 +41,7 @@ static TEE_Result versal_sha3_request(enum versal_crypto_api id,
 		cmd.ibuf[0].len = arg->ibuf[0].len;
 	}
 
-	return 	versal_mbox_notify(&cmd, NULL);
+	return 	versal_mbox_notify(&cmd, NULL, NULL);
 }
 
 static TEE_Result versal_aes_update_aad_request(enum versal_crypto_api id,
@@ -57,12 +57,12 @@ static TEE_Result versal_aes_update_aad_request(enum versal_crypto_api id,
 	cmd.ibuf[0].buf = arg->ibuf[0].buf;
 	cmd.ibuf[0].len = arg->ibuf[0].len;
 
-	return versal_mbox_notify(&cmd, NULL);
+	return versal_mbox_notify(&cmd, NULL, NULL);
 }
 
 
 TEE_Result versal_crypto_request(enum versal_crypto_api id,
-				 struct cmd_args *arg)
+				 struct cmd_args *arg, uint32_t *err)
 {
 	struct ipi_cmd cmd = { };
 	size_t i = 0;
@@ -99,5 +99,5 @@ cache:
 		cmd.ibuf[i].buf = arg->ibuf[i].buf;
 	}
 notify:
-	return 	versal_mbox_notify(&cmd, NULL);
+	return 	versal_mbox_notify(&cmd, NULL, err);
 }

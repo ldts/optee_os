@@ -95,7 +95,7 @@ static TEE_Result do_encrypt(struct drvcrypt_rsa_ed *rsa_data)
 	arg.ibuf[3].buf = key.buf;
 	arg.ibuf[3].len = key.alloc_len;
 
-	if (versal_crypto_request(RSA_PUBLIC_ENCRYPT, &arg)) {
+	if (versal_crypto_request(RSA_PUBLIC_ENCRYPT, &arg, NULL)) {
 		ret = TEE_ERROR_SIGNATURE_INVALID;
 		goto out;
 	}
@@ -163,7 +163,7 @@ static TEE_Result do_decrypt(struct drvcrypt_rsa_ed *rsa_data)
 	arg.ibuf[3].buf = key.buf;
 	arg.ibuf[3].len = key.alloc_len;
 
-	if (versal_crypto_request(RSA_PRIVATE_DECRYPT, &arg)) {
+	if (versal_crypto_request(RSA_PRIVATE_DECRYPT, &arg, NULL)) {
 		ret = TEE_ERROR_SIGNATURE_INVALID;
 		goto out;
 	}
@@ -242,7 +242,7 @@ static TEE_Result rsa_init(void)
 {
 	struct cmd_args arg = { };
 
-	if (versal_crypto_request(RSA_KAT, &arg))
+	if (versal_crypto_request(RSA_KAT, &arg, NULL))
 		return TEE_ERROR_GENERIC;
 
 	return drvcrypt_register_rsa(&driver_rsa);

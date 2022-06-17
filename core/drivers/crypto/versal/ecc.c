@@ -8,6 +8,7 @@
 #include <drvcrypt_acipher.h>
 #include <crypto/crypto_impl.h>
 #include <initcall.h>
+#include <kernel/panic.h>
 #include <mm/core_memprot.h>
 #include <string.h>
 #include <tee/cache.h>
@@ -18,20 +19,93 @@
 #define XSECURE_ECDSA_KAT_NIST_P384	0
 #define XSECURE_ECDSA_KAT_NIST_P521	2
 
+#define __STR(X) #X
+#define STR(X) __STR(X)
+
 static const struct crypto_ecc_keypair_ops *soft_keypair_ops;
 static const struct crypto_ecc_public_ops *soft_public_ops;
 
-static void crypto_bignum_bn2bin_eswap(struct bignum *from, uint8_t *to)
+enum versal_ecc_err {
+	KAT_KEY_NOTVALID_ERROR = 0xC0,
+	KAT_FAILED_ERROR,
+	NON_SUPPORTED_CURVE,
+	KEY_ZERO,
+	KEY_WRONG_ORDER,
+	KEY_NOT_ON_CURVE,
+	BAD_SIGN,
+	GEN_SIGN_INCORRECT_HASH_LEN,
+	VER_SIGN_INCORRECT_HASH_LEN,
+	GEN_SIGN_BAD_RAND_NUM,
+	GEN_KEY_ERR,
+	INVALID_PARAM,
+	VER_SIGN_R_ZERO,
+	VER_SIGN_S_ZERO,
+	VER_SIGN_R_ORDER_ERROR,
+	VER_SIGN_S_ORDER_ERROR,
+	KAT_INVLD_CRV_ERROR,
+};
+
+static char* versal_ecc_error(uint8_t error)
+{
+	struct {
+		enum versal_ecc_err error;
+		const char *name;
+	} elist[] = {
+		{ KAT_KEY_NOTVALID_ERROR, STR(KAT_KEY_NOTVALID_ERROR), },
+		{ KAT_FAILED_ERROR, STR(KAT_FAILED_ERROR), },
+		{ NON_SUPPORTED_CURVE, STR(NON_SUPPORTED_CURVE), },
+		{ KEY_ZERO, STR(KEY_ZERO), },
+		{ KEY_WRONG_ORDER, STR(KEY_WRONG_ORDER), },
+		{ KEY_NOT_ON_CURVE, STR(KEY_NOT_ON_CURVE), },
+		{ BAD_SIGN, STR(BAD_SIGN), },
+		{ GEN_SIGN_INCORRECT_HASH_LEN, STR(GEN_SIGN_INCORRECT_HASH_LEN), },
+		{ VER_SIGN_INCORRECT_HASH_LEN, STR(VER_SIGN_INCORRECT_HASH_LEN), },
+		{ GEN_SIGN_BAD_RAND_NUM, STR(GEN_SIGN_BAD_RAND_NUM), },
+		{ GEN_KEY_ERR, STR(GEN_KEY_ERR), },
+		{ INVALID_PARAM, STR(INVALID_PARAM), },
+		{ VER_SIGN_R_ZERO, STR(VER_SIGN_R_ZERO), },
+		{ VER_SIGN_S_ZERO, STR(VER_SIGN_S_ZERO), },
+		{ VER_SIGN_R_ORDER_ERROR, STR(VER_SIGN_R_ORDER_ERROR), },
+		{ VER_SIGN_S_ORDER_ERROR, STR(VER_SIGN_S_ORDER_ERROR), },
+		{ KAT_INVLD_CRV_ERROR, STR(KAT_INVLD_CRV_ERROR), },
+	};
+
+	if (error <= KAT_INVLD_CRV_ERROR)
+		return elist[error & 0x1f].name;
+
+	return NULL;
+}
+
+static void crypto_bignum_bn2bin_eswap(uint32_t curve,
+				       struct bignum *from, uint8_t *to)
 {
 	uint8_t tmp = 0;
+	uint8_t pad[66] = { };
 	size_t i = 0;
 	size_t j = 0;
+	size_t len = crypto_bignum_num_bytes(from);
 
-	crypto_bignum_bn2bin(from, to);
-	for(i = 0, j = crypto_bignum_num_bytes(from) - 1; i < j; i++, j--) {
-		tmp = to[i];
-		to[i] = to[j];
-		to[j] = tmp;
+	switch (curve) {
+	case TEE_ECC_CURVE_NIST_P384:
+		crypto_bignum_bn2bin(from, pad + 48 - len);
+		for (i = 0, j = 48 - 1; i < j; i++, j--) {
+			tmp = pad[i];
+			pad[i] = pad[j];
+			pad[j] = tmp;
+		}
+		memcpy(to, pad, 48);
+		break;
+	case TEE_ECC_CURVE_NIST_P521:
+		crypto_bignum_bn2bin(from, pad + 66 - len);
+		for (i = 0, j = 66 - 1; i < j; i++, j--) {
+			tmp = pad[i];
+			pad[i] = pad[j];
+			pad[j] = tmp;
+		}
+		memcpy(to, pad, 66);
+		break;
+	default:
+		panic();
 	}
 }
 
@@ -98,6 +172,8 @@ static TEE_Result verify(uint32_t algo, struct ecc_public_key *key,
 	struct cmd_args arg = { };
 	size_t key_bytes = 0;
 	size_t key_bits = 0;
+	uint32_t err = 0;
+	size_t align = key->curve == TEE_ECC_CURVE_NIST_P521 ? 2: 0;
 
 	ret = ecc_get_key_size(key->curve, 0, &key_bytes, &key_bits);
 	if (ret != TEE_SUCCESS)
@@ -107,13 +183,10 @@ static TEE_Result verify(uint32_t algo, struct ecc_public_key *key,
 	if (ret)
 		return ret;
 
-	versal_mbox_alloc(crypto_bignum_num_bytes(key->x) +
-			    crypto_bignum_num_bytes(key->y), NULL, &x);
-
-	/* Public key */
-	crypto_bignum_bn2bin_eswap(key->x, x.buf);
-	crypto_bignum_bn2bin_eswap(key->y, (uint8_t *)
-				   x.buf + crypto_bignum_num_bytes(key->x));
+	versal_mbox_alloc(key_bytes * 2 + align, NULL, &x);
+	crypto_bignum_bn2bin_eswap(key->curve, key->x, x.buf);
+	crypto_bignum_bn2bin_eswap(key->curve, key->y, (uint8_t *)
+				   x.buf + key_bytes + align);
 	/* Signature */
 	versal_mbox_alloc(sig_len, sig, &s);
 
@@ -137,8 +210,13 @@ static TEE_Result verify(uint32_t algo, struct ecc_public_key *key,
 	arg.ibuf[3].buf = s.buf;
 	arg.ibuf[3].len = s.alloc_len;
 
-	if (versal_crypto_request(ELLIPTIC_VERIFY_SIGN, &arg))
+	DMSG("Signature to verify %ld", sig_len);
+	DHEXDUMP(sig, sig_len);
+
+	if (versal_crypto_request(ELLIPTIC_VERIFY_SIGN, &arg, &err)) {
+		EMSG("Versal ECC: %s", versal_ecc_error(err));
 		ret = TEE_ERROR_GENERIC;
+	}
 
 	free(p.buf);
 	free(x.buf);
@@ -162,6 +240,7 @@ static TEE_Result sign(uint32_t algo, struct ecc_keypair *key,
 	struct cmd_args arg = { };
 	size_t key_bytes = 0;
 	size_t key_bits = 0;
+	uint32_t err = 0;
 
 	ret = ecc_get_key_size(key->curve, 0, &key_bytes, &key_bits);
 	if (ret != TEE_SUCCESS)
@@ -173,14 +252,13 @@ static TEE_Result sign(uint32_t algo, struct ecc_keypair *key,
 
 	/* Ephemeral private key */
 	versal_mbox_alloc(key_bytes, NULL, &k);
-
 	ret = crypto_rng_read(k.buf, key_bytes);
 	if (ret)
 		goto out;
 
 	/* Private key*/
 	versal_mbox_alloc(key_bytes, NULL, &d);
-	crypto_bignum_bn2bin_eswap(key->d, d.buf);
+	crypto_bignum_bn2bin_eswap(key->curve, key->d, d.buf);
 
 	/* Signature */
 	versal_mbox_alloc(*sig_len, NULL, &s);
@@ -206,12 +284,14 @@ static TEE_Result sign(uint32_t algo, struct ecc_keypair *key,
 	arg.ibuf[4].buf = p.buf;
 	arg.ibuf[4].len = p.alloc_len;
 
-	if (versal_crypto_request(ELLIPTIC_GENERATE_SIGN, &arg)) {
+	if (versal_crypto_request(ELLIPTIC_GENERATE_SIGN, &arg, &err)) {
 		ret = TEE_ERROR_GENERIC;
 		goto out;
 	}
 
 	memcpy(sig, s.buf, *sig_len);
+	DMSG("Signature generated %ld",*sig_len);
+	DHEXDUMP(sig, *sig_len);
 out:
 	free(cmd);
 	free(k.buf);
@@ -258,10 +338,10 @@ static TEE_Result do_verify(struct drvcrypt_sign_data *sdata)
 		      sdata->signature.length);
 }
 
-static TEE_Result do_gen_keypair(struct ecc_keypair *keypair, size_t size_bytes)
+static TEE_Result do_gen_keypair(struct ecc_keypair *keypair, size_t size_bits)
 {
 	/* Versal requires little endian so need to eswap on Versal IP ops */
-	return soft_keypair_ops->generate(keypair, size_bytes);
+	return soft_keypair_ops->generate(keypair, size_bits);
 }
 
 static TEE_Result do_alloc_keypair(struct ecc_keypair *s, size_t size_bits)
@@ -307,21 +387,20 @@ static TEE_Result ecc_init(void)
 {
 	struct ecc_public_key public_dummy = { };
 	struct ecc_keypair pair_dummy = { };
-	struct cmd_args arg = { .dlen = 1 };
+	struct cmd_args arg = { };
 	TEE_Result ret = TEE_ERROR_GENERIC;
+	uint32_t err = 0;
 
 	arg.data[0] = XSECURE_ECDSA_KAT_NIST_P384;
 	arg.dlen = 1;
-
-	if (versal_crypto_request(ELLIPTIC_KAT, &arg)) {
+	if (versal_crypto_request(ELLIPTIC_KAT, &arg, &err)) {
 		EMSG("Versal KAG NIST_P384 failed");
 		return TEE_ERROR_GENERIC;
 	}
 
 	arg.data[0] = XSECURE_ECDSA_KAT_NIST_P521;
 	arg.dlen = 1;
-
-	if (versal_crypto_request(ELLIPTIC_KAT, &arg)) {
+	if (versal_crypto_request(ELLIPTIC_KAT, &arg, &err)) {
 		EMSG("Versal KAG NIST_P521 failed");
 		return TEE_ERROR_GENERIC;
 	}

@@ -62,7 +62,6 @@ srcs-$(CFG_VERSAL_NVM) += versal_nvm.c
 srcs-$(CFG_VERSAL_PUF) += versal_puf.c
 srcs-$(CFG_VERSAL_HUK) += versal_huk.c
 srcs-$(CFG_ZYNQ_GPIO) += zynq_gpio.c
-srcs-$(CFG_VERSAL_TESTS) += zynq_gpio_test.c versal_puf_test.c versal_nvm_test.c
 
 subdirs-y += crypto
 subdirs-$(CFG_BNXT_FW) += bnxt

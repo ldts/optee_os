@@ -159,7 +159,7 @@ static TEE_Result versal_encrypt(uint8_t *src, size_t src_len,
 
 	/* AES INIT*/
 	cmd.data[0] = API_ID(AES_INIT);
-	if (versal_mbox_notify(&cmd, NULL)) {
+	if (versal_mbox_notify(&cmd, NULL, NULL)) {
 		EMSG("AES_INIT error");
 		return TEE_ERROR_GENERIC;
 	}
@@ -179,7 +179,7 @@ static TEE_Result versal_encrypt(uint8_t *src, size_t src_len,
 	cmd.data[4] = virt_to_phys(p.buf) >> 32;
 	cmd.ibuf[0].buf = p.buf;
 	cmd.ibuf[0].len = p.alloc_len;
-	if (versal_mbox_notify(&cmd, NULL)) {
+	if (versal_mbox_notify(&cmd, NULL, NULL)) {
 		EMSG("AES_WRITE_KEY error");
 		ret = TEE_ERROR_GENERIC;
 	}
@@ -204,7 +204,7 @@ secure:
 	cmd.ibuf[0].len = init_buf.alloc_len;
 	cmd.ibuf[1].buf = p.buf;
 	cmd.ibuf[1].len = p.alloc_len;
-	if (versal_mbox_notify(&cmd, NULL)) {
+	if (versal_mbox_notify(&cmd, NULL, NULL)) {
 		EMSG("AES_OP_INIT error");
 		ret = TEE_ERROR_GENERIC;
 	}
@@ -222,7 +222,7 @@ secure:
 	cmd.data[3] = p.len % 16 ? p.alloc_len : p.len;
 	cmd.ibuf[0].buf = p.buf;
 	cmd.ibuf[0].len = p.alloc_len;
-	if (versal_mbox_notify(&cmd, NULL)) {
+	if (versal_mbox_notify(&cmd, NULL, NULL)) {
 		EMSG("AES_UPDATE_AAD error");
 		ret = TEE_ERROR_GENERIC;
 	}
@@ -250,7 +250,7 @@ secure:
 	cmd.ibuf[1].len = p.alloc_len;
 	cmd.ibuf[2].buf = q.buf;
 	cmd.ibuf[2].len = q.alloc_len;
-	if (versal_mbox_notify(&cmd, NULL)) {
+	if (versal_mbox_notify(&cmd, NULL, NULL)) {
 		EMSG("AES_UPDATE_PAYLOAD error");
 		ret = TEE_ERROR_GENERIC;
 	}
@@ -268,7 +268,7 @@ secure:
 	cmd.data[0] = API_ID(AES_ENCRYPT_FINAL);
 	cmd.data[1] = virt_to_phys(p.buf);
 	cmd.data[2] = virt_to_phys(p.buf) >> 32;
-	if (versal_mbox_notify(&cmd, NULL)) {
+	if (versal_mbox_notify(&cmd, NULL, NULL)) {
 		EMSG("AES_ENCRYPT_FINAL error");
 		ret = TEE_ERROR_GENERIC;
 	}
@@ -293,7 +293,7 @@ static TEE_Result versal_create_digest(uint8_t *src, size_t src_len,
 	cmd.ibuf[0].buf = p.buf;
 	cmd.ibuf[0].len = p.alloc_len;
 
-	if (versal_mbox_notify(&cmd, NULL))
+	if (versal_mbox_notify(&cmd, NULL, NULL))
 		goto out;
 
 	free(p.buf);
@@ -306,7 +306,7 @@ static TEE_Result versal_create_digest(uint8_t *src, size_t src_len,
 	cmd.ibuf[0].buf = p.buf;
 	cmd.ibuf[0].len = p.alloc_len;
 
-	if (versal_mbox_notify(&cmd, NULL))
+	if (versal_mbox_notify(&cmd, NULL, NULL))
 		goto out;
 
 	memcpy(dst, p.buf, p.len);

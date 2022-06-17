@@ -31,7 +31,8 @@ struct ipi_cmd {
 	struct ipi_buf ibuf[MAX_IPI_BUF];
 };
 
-TEE_Result versal_mbox_notify(struct ipi_cmd *cmd, struct ipi_cmd *rsp);
+TEE_Result versal_mbox_notify(struct ipi_cmd *cmd, struct ipi_cmd *rsp,
+			      uint32_t *err);
 TEE_Result versal_mbox_alloc(size_t len, const void *init,
 			     struct versal_mbox_mem *mem);
 #endif /* __DRIVERS_VERSAL_MBOX_H */

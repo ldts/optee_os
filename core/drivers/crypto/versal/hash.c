@@ -93,6 +93,7 @@ static TEE_Result hash_update(struct crypto_hash_ctx *ctx,
 	struct versal_mbox_mem p = { };
 	struct cmd_args arg = { };
 	uint32_t init_mask = 0;
+	uint32_t err = 0;
 
 	if (c->state == SHA3_INIT)
 		init_mask = FIRST_PACKET;
@@ -104,7 +105,7 @@ static TEE_Result hash_update(struct crypto_hash_ctx *ctx,
 	arg.data[0] = NEXT_PACKET | init_mask | len;
 	arg.dlen = 1;
 
-	if (versal_crypto_request(SHA3_UPDATE, &arg))
+	if (versal_crypto_request(SHA3_UPDATE, &arg, &err))
 		ret = TEE_ERROR_GENERIC;
 	else
 		c->state = SHA3_RUN;
@@ -122,6 +123,7 @@ static TEE_Result do_hash_final(struct crypto_hash_ctx *ctx,
 	struct versal_mbox_mem p = { };
 	TEE_Result ret = TEE_SUCCESS;
 	struct cmd_args arg = { };
+	uint32_t err = 0;
 
 	if (c->state == SHA3_STNDBY)
 		return TEE_ERROR_GENERIC;
@@ -144,7 +146,7 @@ static TEE_Result do_hash_final(struct crypto_hash_ctx *ctx,
 	arg.ibuf[0].buf = p.buf;
 	arg.ibuf[0].len = p.alloc_len;
 
-	if (versal_crypto_request(SHA3_UPDATE, &arg))
+	if (versal_crypto_request(SHA3_UPDATE, &arg, &err))
 		ret = TEE_ERROR_GENERIC;
 	else
 		c->state = SHA3_STNDBY;
@@ -249,7 +251,7 @@ static TEE_Result sha3_init(void)
 {
 	struct cmd_args arg = { };
 
-	if (versal_crypto_request(SHA3_KAT, &arg))
+	if (versal_crypto_request(SHA3_KAT, &arg, NULL))
 		panic();
 
 	return drvcrypt_register_hash(versal_hash_alloc);
