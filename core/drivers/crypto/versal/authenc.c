@@ -300,6 +300,9 @@ static TEE_Result do_update_aad(struct drvcrypt_authenc_update_aad *dupdate)
 	struct cmd_args arg = { };
 	struct versal_node *node = NULL;
 
+	if (dupdate->aad.length % 16)
+		return TEE_ERROR_BAD_PARAMETERS;
+
 	/* if there is a copy, we dont allow updates, only finalize */
 	if (refcount_val(&engine.refc) > 1)
 		return TEE_ERROR_BUSY;
@@ -310,15 +313,13 @@ static TEE_Result do_update_aad(struct drvcrypt_authenc_update_aad *dupdate)
 
 	versal_mbox_alloc(dupdate->aad.length, dupdate->aad.data, &p);
 
-	arg.data[0] = (p.len % 16) ? p.alloc_len : p.len;
+	arg.data[0] = p.len;
 	arg.dlen = 1;
 	arg.ibuf[0].buf = p.buf;
 	arg.ibuf[0].len = p.alloc_len;
 
 	if (versal_crypto_request(AES_UPDATE_AAD, &arg)) {
-		EMSG("AES_UPDATE_AAD error "
-		     "(len req = %ld, len provided %ld)",
-		     p.len, (p.len % 16) ? p.alloc_len : p.len);
+		EMSG("AES_UPDATE_AAD error");
 		ret = TEE_ERROR_GENERIC;
 	}
 
@@ -346,13 +347,16 @@ static TEE_Result update_payload(struct drvcrypt_authenc_update_payload
 	struct cmd_args arg = { };
 	struct versal_node *node = NULL;
 
+	if (dupdate->src.length % 4)
+		return TEE_ERROR_BAD_PARAMETERS;
+
 	versal_mbox_alloc(dupdate->src.length, dupdate->src.data, &p);
 	versal_mbox_alloc(dupdate->dst.length, NULL, &q);
 	versal_mbox_alloc(sizeof(*input), NULL, &input_cmd);
 
 	input = input_cmd.buf;
 	input->input_addr = virt_to_phys(p.buf);
-	input->input_len = (p.len % 4) ? p.alloc_len : p.len;
+	input->input_len = p.len;
 	input->is_last = is_last;
 
 	arg.ibuf[0].buf = input;
@@ -366,9 +370,7 @@ static TEE_Result update_payload(struct drvcrypt_authenc_update_payload
 		id = AES_ENCRYPT_UPDATE;
 
 	if (versal_crypto_request(id, &arg)) {
-		EMSG("AES_UPDATE_PLD error "
-		     "(len requested = %ld, len provided %ld)",
-		     p.len, (p.len % 4) ? p.alloc_len : p.len);
+		EMSG("AES_UPDATE_PAYLOAD error ");
 		ret = TEE_ERROR_GENERIC;
 		goto out;
 	}
