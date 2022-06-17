@@ -453,8 +453,6 @@ static TEE_Result update_payload(struct drvcrypt_authenc_update_payload
 	if (dupdate->encrypt)
 		id = AES_ENCRYPT_UPDATE;
 
-	IMSG("SRC len = %ld", dupdate->src.length);
-	IMSG("DST len = %ld", dupdate->dst.length);
 	if (versal_crypto_request(id, &arg, &err)) {
 		EMSG("AES_UPDATE_PAYLOAD error: %s", versal_aes_error(err));
 		ret = TEE_ERROR_GENERIC;

@@ -212,9 +212,6 @@ static TEE_Result verify(uint32_t algo, struct ecc_public_key *key,
 	arg.ibuf[3].buf = s.buf;
 	arg.ibuf[3].len = s.alloc_len;
 
-	DMSG("Signature to verify %ld", sig_len);
-	DHEXDUMP(sig, sig_len);
-
 	if (versal_crypto_request(ELLIPTIC_VERIFY_SIGN, &arg, &err)) {
 		EMSG("Versal ECC: %s", versal_ecc_error(err));
 		ret = TEE_ERROR_GENERIC;
