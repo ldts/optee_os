@@ -45,7 +45,7 @@ enum versal_ecc_err {
 	KAT_INVLD_CRV_ERROR,
 };
 
-static char* versal_ecc_error(uint8_t error)
+static const char* versal_ecc_error(uint8_t error)
 {
 	struct {
 		enum versal_ecc_err error;
@@ -58,8 +58,10 @@ static char* versal_ecc_error(uint8_t error)
 		{ KEY_WRONG_ORDER, STR(KEY_WRONG_ORDER), },
 		{ KEY_NOT_ON_CURVE, STR(KEY_NOT_ON_CURVE), },
 		{ BAD_SIGN, STR(BAD_SIGN), },
-		{ GEN_SIGN_INCORRECT_HASH_LEN, STR(GEN_SIGN_INCORRECT_HASH_LEN), },
-		{ VER_SIGN_INCORRECT_HASH_LEN, STR(VER_SIGN_INCORRECT_HASH_LEN), },
+		{ GEN_SIGN_INCORRECT_HASH_LEN,
+			STR(GEN_SIGN_INCORRECT_HASH_LEN), },
+		{ VER_SIGN_INCORRECT_HASH_LEN,
+			STR(VER_SIGN_INCORRECT_HASH_LEN), },
 		{ GEN_SIGN_BAD_RAND_NUM, STR(GEN_SIGN_BAD_RAND_NUM), },
 		{ GEN_KEY_ERR, STR(GEN_KEY_ERR), },
 		{ INVALID_PARAM, STR(INVALID_PARAM), },
@@ -70,8 +72,8 @@ static char* versal_ecc_error(uint8_t error)
 		{ KAT_INVLD_CRV_ERROR, STR(KAT_INVLD_CRV_ERROR), },
 	};
 
-	if (error <= KAT_INVLD_CRV_ERROR)
-		return elist[error & 0x1f].name;
+	if (error <= KAT_INVLD_CRV_ERROR && error >= KAT_KEY_NOTVALID_ERROR)
+		return elist[error - KAT_KEY_NOTVALID_ERROR].name;
 
 	return NULL;
 }

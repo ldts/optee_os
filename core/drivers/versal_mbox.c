@@ -285,8 +285,11 @@ TEE_Result versal_mbox_notify(struct ipi_cmd *cmd, struct ipi_cmd *rsp,
 	if (remote_status) {
 		if (err)
 			*err = remote_status;
-		/* Check xplmi_status.h in the PLM code (hundreds of types) */
-		EMSG("PLM (err=0x%x)", remote_status >> 16);
+		/* Check remote code: xplmi_status.h  */
+		/* Check xsecure_error.h for i.e: crypto service errors */
+		EMSG("PLM [plm_status = 0x%x, lib_status = 0x%x]",
+		     (remote_status & 0xFFFF0000) >> 16,
+		     (remote_status & 0x0000FFFF));
 		ret = TEE_ERROR_GENERIC;
 	}
 out:

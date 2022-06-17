@@ -103,7 +103,6 @@ static TEE_Result test_validate_keypair_gen(void)
 	struct cmd_args arg = { };
 	struct versal_mbox_mem p = { };
 	void *q = NULL;
-	size_t qlen = 0;
 
 	ret = drvcrypt_asym_alloc_ecc_keypair(&keypair,
 					      TEE_TYPE_ECDSA_KEYPAIR, 1024);
@@ -117,8 +116,8 @@ static TEE_Result test_validate_keypair_gen(void)
 
 	versal_mbox_alloc(48 * 2, NULL, &p);
 	crypto_bignum_bn2bin_eswap(TEE_ECC_CURVE_NIST_P384, keypair.x, p.buf);
-	crypto_bignum_bn2bin_eswap(TEE_ECC_CURVE_NIST_P384, keypair.y, (uint8_t *)
-				   p.buf + 48);
+	crypto_bignum_bn2bin_eswap(TEE_ECC_CURVE_NIST_P384, keypair.y,
+				   (uint8_t *)p.buf + 48);
 	arg.data[0] = TEE_ECC_CURVE_NIST_P384;
 	arg.dlen = 1;
 	arg.ibuf[0].buf = p.buf;
@@ -166,7 +165,6 @@ static TEE_Result test_validate_keypair_gen_521(void)
 	struct cmd_args arg = { };
 	struct versal_mbox_mem p = { };
 	void *q = NULL;
-	size_t qlen = 0;
 
 	ret = drvcrypt_asym_alloc_ecc_keypair(&keypair,
 					      TEE_TYPE_ECDSA_KEYPAIR, 4096);
@@ -179,10 +177,9 @@ static TEE_Result test_validate_keypair_gen_521(void)
 		return ret;
 
 	versal_mbox_alloc(66 * 2, NULL, &p);
-	crypto_bignum_bn2bin_eswap(TEE_ECC_CURVE_NIST_P521,
-				   keypair.x, p.buf);
-	crypto_bignum_bn2bin_eswap(TEE_ECC_CURVE_NIST_P521,
-				   keypair.y, p.buf + 66);
+	crypto_bignum_bn2bin_eswap(TEE_ECC_CURVE_NIST_P521, keypair.x, p.buf);
+	crypto_bignum_bn2bin_eswap(TEE_ECC_CURVE_NIST_P521, keypair.y,
+				   (uint8_t *)p.buf + 66);
 
 	arg.data[0] = TEE_ECC_CURVE_NIST_P521;
 	arg.dlen = 1;

@@ -35,6 +35,83 @@
 #define XSECURE_ENCRYPT 0
 #define XSECURE_DECRYPT 1
 
+#define __STR(X) #X
+#define STR(X) __STR(X)
+
+enum versal_aes_err {
+	AES_GCM_TAG_MISMATCH = 0x40,
+	AES_KEY_CLEAR_ERROR,
+	AES_DPA_CM_NOT_SUPPORTED,
+	AES_KAT_WRITE_KEY_FAILED_ERROR,
+	AES_KAT_DECRYPT_INIT_FAILED_ERROR,
+	AES_KAT_GCM_TAG_MISMATCH_ERROR,
+	AES_KAT_DATA_MISMATCH_ERROR,
+	AES_KAT_FAILED_ERROR,
+	AESDPACM_KAT_WRITE_KEY_FAILED_ERROR,
+	AESDPACM_KAT_KEYLOAD_FAILED_ERROR,
+	AESDPACM_SSS_CFG_FAILED_ERROR,
+	AESDPACM_KAT_FAILED_ERROR,
+	AESDPACM_KAT_CHECK1_FAILED_ERROR,
+	AESDPACM_KAT_CHECK2_FAILED_ERROR,
+	AESDPACM_KAT_CHECK3_FAILED_ERROR,
+	AESDPACM_KAT_CHECK4_FAILED_ERROR,
+	AESDPACM_KAT_CHECK5_FAILED_ERROR,
+	AES_INVALID_PARAM,
+	AESKAT_INVALID_PARAM,
+	AES_STATE_MISMATCH_ERROR,
+	AES_DEVICE_KEY_NOT_ALLOWED,
+};
+
+static const char *versal_aes_error(uint8_t error)
+{
+	struct {
+		enum versal_aes_err error;
+		const char *name;
+	} elist[] = {
+		{ AES_GCM_TAG_MISMATCH, STR(AES_GCM_TAG_MISMATCH), },
+		{ AES_KEY_CLEAR_ERROR, STR(AES_KEY_CLEAR_ERROR), },
+		{ AES_DPA_CM_NOT_SUPPORTED, STR(AES_DPA_CM_NOT_SUPPORTED), },
+		{ AES_KAT_WRITE_KEY_FAILED_ERROR,
+			STR(AES_KAT_WRITE_KEY_FAILED_ERROR), },
+		{ AES_KAT_DECRYPT_INIT_FAILED_ERROR,
+			STR(AES_KAT_DECRYPT_INIT_FAILED_ERROR), },
+		{ AES_KAT_GCM_TAG_MISMATCH_ERROR,
+			STR(AES_KAT_GCM_TAG_MISMATCH_ERROR), },
+		{ AES_KAT_DATA_MISMATCH_ERROR,
+			STR(AES_KAT_DATA_MISMATCH_ERROR), },
+		{ AES_KAT_FAILED_ERROR, STR(AES_KAT_FAILED_ERROR), },
+		{ AESDPACM_KAT_WRITE_KEY_FAILED_ERROR,
+			STR(AESDPACM_KAT_WRITE_KEY_FAILED_ERROR), },
+		{ AESDPACM_KAT_KEYLOAD_FAILED_ERROR,
+			STR(AESDPACM_KAT_KEYLOAD_FAILED_ERROR), },
+		{ AESDPACM_SSS_CFG_FAILED_ERROR,
+			STR(AESDPACM_SSS_CFG_FAILED_ERROR), },
+		{ AESDPACM_KAT_FAILED_ERROR,
+			STR(AESDPACM_KAT_FAILED_ERROR), },
+		{ AESDPACM_KAT_CHECK1_FAILED_ERROR,
+			STR(AESDPACM_KAT_CHECK1_FAILED_ERROR), },
+		{ AESDPACM_KAT_CHECK2_FAILED_ERROR,
+			STR(AESDPACM_KAT_CHECK2_FAILED_ERROR), },
+		{ AESDPACM_KAT_CHECK3_FAILED_ERROR,
+			STR(AESDPACM_KAT_CHECK3_FAILED_ERROR), },
+		{ AESDPACM_KAT_CHECK4_FAILED_ERROR,
+			STR(AESDPACM_KAT_CHECK4_FAILED_ERROR), },
+		{ AESDPACM_KAT_CHECK5_FAILED_ERROR,
+			STR(AESDPACM_KAT_CHECK5_FAILED_ERROR), },
+		{ AES_INVALID_PARAM, STR(AES_INVALID_PARAM), },
+		{ AESKAT_INVALID_PARAM, STR(AESKAT_INVALID_PARAM), },
+		{ AES_STATE_MISMATCH_ERROR, STR(AES_STATE_MISMATCH_ERROR), },
+		{ AES_DEVICE_KEY_NOT_ALLOWED,
+			STR(AES_DEVICE_KEY_NOT_ALLOWED), },
+	};
+
+	if (error >= AES_GCM_TAG_MISMATCH &&
+	    error <= AES_DEVICE_KEY_NOT_ALLOWED)
+		return elist[error - AES_GCM_TAG_MISMATCH].name;
+
+	return NULL;
+}
+
 enum aes_key_src {
 	XSECURE_AES_BBRAM_KEY = 0,              /* BBRAM Key */
 	XSECURE_AES_BBRAM_RED_KEY,              /* BBRAM Red Key */
@@ -161,7 +238,7 @@ static TEE_Result replay_aad(struct versal_aad *p)
 	arg.ibuf[0].len = p->mem.alloc_len;
 
 	if (versal_crypto_request(AES_UPDATE_AAD, &arg, &err)) {
-		EMSG("AES_UPDATE_AAD error");
+		EMSG("AES_UPDATE_AAD error: %s", versal_aes_error(err));
 		ret = TEE_ERROR_GENERIC;
 	}
 
@@ -186,7 +263,7 @@ static TEE_Result replay_payload(struct versal_payload *p)
 		id = AES_ENCRYPT_UPDATE;
 
 	if (versal_crypto_request(id, &arg, &err)) {
-		EMSG("AES_UPDATE_PAYLOAD error");
+		EMSG("AES_UPDATE_PAYLOAD error: %s", versal_aes_error(err));
 		ret = TEE_ERROR_GENERIC;
 	}
 
@@ -242,7 +319,7 @@ static TEE_Result do_init(struct drvcrypt_authenc_init *dinit)
 
 	/* initialize the AES engine */
 	if (versal_crypto_request(AES_INIT, &arg, &err)) {
-		EMSG("AES_INIT error");
+		EMSG("AES_INIT error: %s", versal_aes_error(err));
 		return TEE_ERROR_GENERIC;
 	}
 
@@ -256,7 +333,7 @@ static TEE_Result do_init(struct drvcrypt_authenc_init *dinit)
 	arg.ibuf[0].len = key.alloc_len;
 
 	if (versal_crypto_request(AES_WRITE_KEY, &arg, &err)) {
-		EMSG("AES_WRITE_KEY error");
+		EMSG("AES_WRITE_KEY error: %s", versal_aes_error(err));
 		ret = TEE_ERROR_GENERIC;
 		goto out;
 	}
@@ -280,7 +357,7 @@ static TEE_Result do_init(struct drvcrypt_authenc_init *dinit)
 	arg.ibuf[1].only_cache = true;
 
 	if (versal_crypto_request(AES_OP_INIT, &arg, &err)) {
-		EMSG("AES_OP_INIT error");
+		EMSG("AES_OP_INIT error: %s", versal_aes_error(err));
 		ret = TEE_ERROR_GENERIC;
 	}
 out:
@@ -305,9 +382,6 @@ static TEE_Result do_update_aad(struct drvcrypt_authenc_update_aad *dupdate)
 	struct versal_node *node = NULL;
 	uint32_t err = 0;
 
-	if (dupdate->aad.length % 16)
-		return TEE_ERROR_BAD_PARAMETERS;
-
 	/* if there is a copy, we dont allow updates, only finalize */
 	if (refcount_val(&engine.refc) > 1)
 		return TEE_ERROR_BUSY;
@@ -318,13 +392,14 @@ static TEE_Result do_update_aad(struct drvcrypt_authenc_update_aad *dupdate)
 
 	versal_mbox_alloc(dupdate->aad.length, dupdate->aad.data, &p);
 
-	arg.data[0] = p.len;
+	/* padding AAD with null to cacheline allows executing TAs */
+	arg.data[0] = p.len % 16 ? p.alloc_len : p.len;
 	arg.dlen = 1;
 	arg.ibuf[0].buf = p.buf;
 	arg.ibuf[0].len = p.alloc_len;
 
 	if (versal_crypto_request(AES_UPDATE_AAD, &arg, &err)) {
-		EMSG("AES_UPDATE_AAD error");
+		EMSG("AES_UPDATE_AAD error: %s", versal_aes_error(err));
 		ret = TEE_ERROR_GENERIC;
 	}
 
@@ -353,8 +428,11 @@ static TEE_Result update_payload(struct drvcrypt_authenc_update_payload
 	struct versal_node *node = NULL;
 	uint32_t err = 0;
 
-	if (dupdate->src.length % 4)
+	if (dupdate->src.length % 4 || !dupdate->src.length) {
+		EMSG("Versal AES payload length not word aligned (len = %ld)",
+		     dupdate->src.length);
 		return TEE_ERROR_BAD_PARAMETERS;
+	}
 
 	versal_mbox_alloc(dupdate->src.length, dupdate->src.data, &p);
 	versal_mbox_alloc(dupdate->dst.length, NULL, &q);
@@ -375,8 +453,10 @@ static TEE_Result update_payload(struct drvcrypt_authenc_update_payload
 	if (dupdate->encrypt)
 		id = AES_ENCRYPT_UPDATE;
 
+	IMSG("SRC len = %ld", dupdate->src.length);
+	IMSG("DST len = %ld", dupdate->dst.length);
 	if (versal_crypto_request(id, &arg, &err)) {
-		EMSG("AES_UPDATE_PAYLOAD error ");
+		EMSG("AES_UPDATE_PAYLOAD error: %s", versal_aes_error(err));
 		ret = TEE_ERROR_GENERIC;
 		goto out;
 	}
@@ -459,7 +539,7 @@ static TEE_Result do_enc_final(struct drvcrypt_authenc_final *dfinal)
 	arg.ibuf[0].buf = p.buf;
 	arg.ibuf[0].len = p.alloc_len;
 	if (versal_crypto_request(AES_ENCRYPT_FINAL, &arg, &err)) {
-		EMSG("AES_ENCRYPT_FINAL error");
+		EMSG("AES_ENCRYPT_FINAL error: %s", versal_aes_error(err));
 		ret = TEE_ERROR_GENERIC;
 		goto out;
 	}
@@ -509,7 +589,7 @@ static TEE_Result do_dec_final(struct drvcrypt_authenc_final *dfinal)
 	arg.ibuf[0].len = p.alloc_len;
 
 	if (versal_crypto_request(AES_DECRYPT_FINAL, &arg, &err)) {
-		EMSG("AES_DECRYPT_FINAL error");
+		EMSG("AES_DECRYPT_FINAL error: %s", versal_aes_error(err));
 		ret = TEE_ERROR_GENERIC;
 		goto out;
 	}
@@ -545,7 +625,8 @@ static void do_free(void *ctx)
 		free(engine.init.key.buf);
 		memset(&engine.init, 0, sizeof(engine.init));
 		STAILQ_FOREACH(node, &engine.replay_list, link) {
-			STAILQ_REMOVE(&engine.replay_list, node, versal_node, link);
+			STAILQ_REMOVE(&engine.replay_list, node,
+				      versal_node, link);
 			if (node->is_aad) {
 				free(node->aad.mem.buf);
 			} else {
