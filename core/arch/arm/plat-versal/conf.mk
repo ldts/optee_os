@@ -38,6 +38,10 @@ $(call force, CFG_VERSAL_PM, y)
 $(call force, CFG_VERSAL_MBOX, y)
 $(call force, CFG_VERSAL_NVM, y)
 
+# Debug information 
+CFG_VERSAL_TRACE_PLM      ?= n
+CFG_VERSAL_TRACE_MBOX     ?= n
+
 # TRNG configuration
 CFG_VERSAL_TRNG_SEED_LIFE ?= 3
 CFG_VERSAL_TRNG_DF_MUL    ?= 7
@@ -50,7 +54,7 @@ CFG_VERSAL_CRYPTO_DRIVER  ?= n
 
 # FPGA
 CFG_VERSAL_FPGA_INIT      ?= n
-CFG_VERSAL_FPGA_DDR_ADDR  ?= 0x80000
+CFG_VERSAL_FPGA_DDR_ADDR  ?= 0x40000000
 
 # PUF
 CFG_VERSAL_PUF            ?= y
@@ -68,7 +72,7 @@ CFG_VERSAL_HUK_KEY        ?= 12
 CFG_VERSAL_HUK            ?= y
 
 # XSECURE_AES_USER_KEY_0 (12) to XSECURE_AES_USER_KEY_7 (19)
-CFG_VERSAL_AES_GCM_KEY    =? 12
+CFG_VERSAL_AES_GCM_KEY    ?= 12
 
 # AES GCM replay feature requires extra heap allocations
-CFG_CORE_HEAP_SIZE ?= 524288
+CFG_CORE_HEAP_SIZE        ?= 524288

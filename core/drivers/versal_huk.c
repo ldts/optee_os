@@ -342,7 +342,7 @@ TEE_Result tee_otp_get_hw_unique_key(struct tee_hw_unique_key *hwkey)
 	memcpy(huk.key, enc_data, sizeof(huk.key));
 	huk.ready = true;
 
-	IMSG("HUK");
+	DMSG("HUK:");
 	DHEXDUMP(huk.key, sizeof(huk.key));
 out:
 	memcpy(hwkey->data, huk.key, HW_UNIQUE_KEY_LENGTH);
