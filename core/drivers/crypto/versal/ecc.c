@@ -130,7 +130,7 @@ static void crypto_bignum_bn2bin_eswap(uint32_t curve,
 static TEE_Result ecc_prepare_msg(uint32_t algo, const uint8_t *msg,
 				  size_t msg_len, struct versal_mbox_mem *p)
 {
-	uint8_t buf[TEE_SHA512_HASH_SIZE] = { 0 };
+	uint8_t buf[TEE_SHA512_HASH_SIZE + 2] = { 0 };
 	size_t len = 0;
 
 	switch (algo) {
@@ -144,8 +144,8 @@ static TEE_Result ecc_prepare_msg(uint32_t algo, const uint8_t *msg,
 			panic();
 		break;
 	case TEE_ALG_ECDSA_P521:
-		len = TEE_SHA512_HASH_SIZE;
-		if (msg_len == TEE_SHA512_HASH_SIZE)
+		len = TEE_SHA512_HASH_SIZE + 2;
+		if (msg_len == TEE_SHA512_HASH_SIZE + 2)
 			break;
 
 		if (tee_hash_createdigest(TEE_ALG_SHA512, msg, msg_len,
@@ -189,7 +189,6 @@ static TEE_Result verify(uint32_t algo, struct ecc_public_key *key,
 	crypto_bignum_bn2bin_eswap(key->curve, key->x, x.buf);
 	crypto_bignum_bn2bin_eswap(key->curve, key->y,
 				   (uint8_t *)x.buf + bytes);
-
 	/* Validate the public key for the curve */
 	arg.data[0] = key->curve;
 	arg.dlen = 1;
@@ -231,14 +230,15 @@ static TEE_Result verify(uint32_t algo, struct ecc_public_key *key,
 	IMSG("Verify --------------------------------");
 	IMSG("Public key");
 	DHEXDUMP(x.buf, bytes * 2);
-	IMSG("Signature");
-	DHEXDUMP(s.buf, sig_len);
 	IMSG("Msg");
 	DHEXDUMP(msg, msg_len);
 	IMSG("Msg hash");
 	DHEXDUMP(p.buf, p.len);
+	IMSG("==>Signature");
+	DHEXDUMP(s.buf, sig_len);
 	IMSG(" --------------------------------------");
 #endif
+
 out:
 	free(p.buf);
 	free(x.buf);
