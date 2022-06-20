@@ -226,19 +226,6 @@ static TEE_Result verify(uint32_t algo, struct ecc_public_key *key,
 		EMSG("Versal ECC: %s", versal_ecc_error(err));
 		ret = TEE_ERROR_GENERIC;
 	}
-#if 0
-	IMSG("Verify --------------------------------");
-	IMSG("Public key");
-	DHEXDUMP(x.buf, bytes * 2);
-	IMSG("Msg");
-	DHEXDUMP(msg, msg_len);
-	IMSG("Msg hash");
-	DHEXDUMP(p.buf, p.len);
-	IMSG("==>Signature");
-	DHEXDUMP(s.buf, sig_len);
-	IMSG(" --------------------------------------");
-#endif
-
 out:
 	free(p.buf);
 	free(x.buf);
@@ -254,6 +241,7 @@ static TEE_Result sign(uint32_t algo, struct ecc_keypair *key,
 {
 	struct versal_ecc_sign_param *cmd = NULL;
 	struct versal_mbox_mem cmd_buf = { };
+	struct ecc_keypair ephemeral = { };
 	struct versal_mbox_mem p = { };
 	struct versal_mbox_mem k = { };
 	struct versal_mbox_mem d = { };
@@ -271,13 +259,28 @@ static TEE_Result sign(uint32_t algo, struct ecc_keypair *key,
 	/* Hash and update the length */
 	ret = ecc_prepare_msg(algo, msg, msg_len, &p);
 	if (ret)
-		return ret;
+		panic();
 
 	/* Ephemeral private key */
+	ret = drvcrypt_asym_alloc_ecc_keypair(&ephemeral,
+					      TEE_TYPE_ECDSA_KEYPAIR, bits);
+	if (ret) {
+		EMSG("Versal, can't allocate the ephemeral key");
+		return ret;
+	}
+
+	ephemeral.curve = key->curve;
+	ret = crypto_acipher_gen_ecc_key(&ephemeral, bits);
+	if (ret) {
+		EMSG("Versal, can't generate the ephemeral key");
+		return ret;
+	}
+
 	versal_mbox_alloc(bytes, NULL, &k);
-	ret = crypto_rng_read(k.buf, bytes);
-	if (ret)
-		goto out;
+	crypto_bignum_bn2bin_eswap(key->curve, ephemeral.d, k.buf);
+	free(ephemeral.d);
+	free(ephemeral.x);
+	free(ephemeral.y);
 
 	/* Private key*/
 	versal_mbox_alloc(bytes, NULL, &d);
@@ -313,21 +316,6 @@ static TEE_Result sign(uint32_t algo, struct ecc_keypair *key,
 	}
 
 	memcpy(sig, s.buf, *sig_len);
-#if 0
-	IMSG("Sign --------------------------------");
-	IMSG("ephemeral key:");
-	DHEXDUMP(k.buf, bytes);
-	IMSG("private key:");
-	DHEXDUMP(d.buf, bytes);
-	IMSG("msg:");
-	DHEXDUMP(msg, msg_len);
-	IMSG("msg hash:");
-	DHEXDUMP(p.buf, p.len);
-	IMSG("==> signature:");
-	DHEXDUMP(s.buf, *sig_len);
-	IMSG(" --------------------------------------");
-#endif
-
 out:
 	free(cmd);
 	free(k.buf);
@@ -392,7 +380,6 @@ static TEE_Result do_alloc_keypair(struct ecc_keypair *s, size_t size_bits)
 	if (!ret) {
 		s->ops = NULL;
 		return ret;
-
 	}
 
 	return TEE_ERROR_NOT_IMPLEMENTED;
