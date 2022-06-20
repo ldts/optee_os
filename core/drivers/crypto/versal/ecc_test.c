@@ -52,38 +52,54 @@ uint8_t hash521[66] = {
 	0x00U, 0x00U,
 };
 
+static TEE_Result ecc_get_key_size(uint32_t curve, uint32_t algo,
+				   size_t *bytes, size_t *bits)
+{
+	switch (curve) {
+	case TEE_ECC_CURVE_NIST_P384:
+		*bits = 384;
+		*bytes = 48;
+		if (algo && algo != TEE_ALG_ECDSA_P384 &&
+			algo != TEE_ALG_ECDH_P384)
+			return TEE_ERROR_BAD_PARAMETERS;
+		break;
+	case TEE_ECC_CURVE_NIST_P521:
+		*bits = 521;
+		*bytes = 66;
+		if (algo && algo != TEE_ALG_ECDSA_P521 &&
+			algo != TEE_ALG_ECDH_P521)
+			return TEE_ERROR_BAD_PARAMETERS;
+		break;
+	default:
+		return TEE_ERROR_NOT_SUPPORTED;
+	}
+
+	return TEE_SUCCESS;
+}
+
 static void crypto_bignum_bn2bin_eswap(uint32_t curve,
 				       struct bignum *from, uint8_t *to)
 {
 	uint8_t tmp = 0;
-	uint8_t pad[66] = { };
+	uint8_t pad[66] = { 0 };
 	size_t i = 0;
 	size_t j = 0;
 	size_t len = crypto_bignum_num_bytes(from);
+	size_t bytes = 0;
+	size_t bits = 0;
 
-	switch (curve) {
-	case TEE_ECC_CURVE_NIST_P384:
-		crypto_bignum_bn2bin(from, pad + 48 - len);
-		for (i = 0, j = 48 - 1; i < j; i++, j--) {
-			tmp = pad[i];
-			pad[i] = pad[j];
-			pad[j] = tmp;
-		}
-		memcpy(to, pad, 48);
-		break;
-	case TEE_ECC_CURVE_NIST_P521:
-		crypto_bignum_bn2bin(from, pad + 66 - len);
-		for (i = 0, j = 66 - 1; i < j; i++, j--) {
-			tmp = pad[i];
-			pad[i] = pad[j];
-			pad[j] = tmp;
-		}
-		memcpy(to, pad, 66);
-		break;
-	default:
+	if (ecc_get_key_size(curve, 0, &bytes, &bits))
 		panic();
+
+	crypto_bignum_bn2bin(from, pad + bytes - len);
+	for (i = 0, j = bytes - 1; i < j; i++, j--) {
+		tmp = pad[i];
+		pad[i] = pad[j];
+		pad[j] = tmp;
 	}
+	memcpy(to, pad, bytes);
 }
+
 
 static TEE_Result test_generate_signature(void)
 {
@@ -122,7 +138,6 @@ static TEE_Result test_validate_keypair_gen(void)
 	arg.dlen = 1;
 	arg.ibuf[0].buf = p.buf;
 	arg.ibuf[0].len = p.alloc_len;
-
 	if (versal_crypto_request(ELLIPTIC_VALIDATE_PUBLIC_KEY, &arg, NULL))
 		panic();
 
@@ -135,6 +150,7 @@ static TEE_Result test_validate_keypair_gen(void)
 		/* panic since there is no reason to test further */
 		panic();
 	}
+
 	key.curve = TEE_ECC_CURVE_NIST_P384;
 	key.x = keypair.x;
 	key.y = keypair.y;
@@ -177,10 +193,10 @@ static TEE_Result test_validate_keypair_gen_521(void)
 		return ret;
 
 	versal_mbox_alloc(66 * 2, NULL, &p);
+
 	crypto_bignum_bn2bin_eswap(TEE_ECC_CURVE_NIST_P521, keypair.x, p.buf);
 	crypto_bignum_bn2bin_eswap(TEE_ECC_CURVE_NIST_P521, keypair.y,
 				   (uint8_t *)p.buf + 66);
-
 	arg.data[0] = TEE_ECC_CURVE_NIST_P521;
 	arg.dlen = 1;
 	arg.ibuf[0].buf = p.buf;
@@ -201,6 +217,7 @@ static TEE_Result test_validate_keypair_gen_521(void)
 	key.curve = TEE_ECC_CURVE_NIST_P521;
 	key.x = keypair.x;
 	key.y = keypair.y;
+
 	free(q);
 	free(p.buf);
 

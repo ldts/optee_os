@@ -12,6 +12,7 @@
 #include <mm/core_memprot.h>
 #include <string.h>
 #include <tee/cache.h>
+#include <tee/tee_cryp_utl.h>
 
 #include "ipi.h"
 
@@ -78,39 +79,6 @@ static const char* versal_ecc_error(uint8_t error)
 	return NULL;
 }
 
-static void crypto_bignum_bn2bin_eswap(uint32_t curve,
-				       struct bignum *from, uint8_t *to)
-{
-	uint8_t tmp = 0;
-	uint8_t pad[66] = { };
-	size_t i = 0;
-	size_t j = 0;
-	size_t len = crypto_bignum_num_bytes(from);
-
-	switch (curve) {
-	case TEE_ECC_CURVE_NIST_P384:
-		crypto_bignum_bn2bin(from, pad + 48 - len);
-		for (i = 0, j = 48 - 1; i < j; i++, j--) {
-			tmp = pad[i];
-			pad[i] = pad[j];
-			pad[j] = tmp;
-		}
-		memcpy(to, pad, 48);
-		break;
-	case TEE_ECC_CURVE_NIST_P521:
-		crypto_bignum_bn2bin(from, pad + 66 - len);
-		for (i = 0, j = 66 - 1; i < j; i++, j--) {
-			tmp = pad[i];
-			pad[i] = pad[j];
-			pad[j] = tmp;
-		}
-		memcpy(to, pad, 66);
-		break;
-	default:
-		panic();
-	}
-}
-
 static TEE_Result ecc_get_key_size(uint32_t curve, uint32_t algo,
 				   size_t *bytes, size_t *bits)
 {
@@ -119,14 +87,14 @@ static TEE_Result ecc_get_key_size(uint32_t curve, uint32_t algo,
 		*bits = 384;
 		*bytes = 48;
 		if (algo && algo != TEE_ALG_ECDSA_P384 &&
-		    algo != TEE_ALG_ECDH_P384)
+			algo != TEE_ALG_ECDH_P384)
 			return TEE_ERROR_BAD_PARAMETERS;
 		break;
 	case TEE_ECC_CURVE_NIST_P521:
 		*bits = 521;
 		*bytes = 66;
 		if (algo && algo != TEE_ALG_ECDSA_P521 &&
-		    algo != TEE_ALG_ECDH_P521)
+			algo != TEE_ALG_ECDH_P521)
 			return TEE_ERROR_BAD_PARAMETERS;
 		break;
 	default:
@@ -136,27 +104,60 @@ static TEE_Result ecc_get_key_size(uint32_t curve, uint32_t algo,
 	return TEE_SUCCESS;
 }
 
-static TEE_Result ecc_prepare_msg(uint32_t algo, const uint8_t *msg,
-				  size_t *msg_len, struct versal_mbox_mem *p)
+static void crypto_bignum_bn2bin_eswap(uint32_t curve,
+				       struct bignum *from, uint8_t *to)
 {
+	uint8_t pad[66] = { 0 };
+	uint8_t tmp = 0;
+	size_t i = 0;
+	size_t j = 0;
+	size_t len = crypto_bignum_num_bytes(from);
+	size_t bytes = 0;
+	size_t bits = 0;
+
+	if (ecc_get_key_size(curve, 0, &bytes, &bits))
+		panic();
+
+	crypto_bignum_bn2bin(from, pad + bytes - len);
+	for (i = 0, j = bytes - 1; i < j; i++, j--) {
+		tmp = pad[i];
+		pad[i] = pad[j];
+		pad[j] = tmp;
+	}
+	memcpy(to, pad, bytes);
+}
+
+static TEE_Result ecc_prepare_msg(uint32_t algo, const uint8_t *msg,
+				  size_t msg_len, struct versal_mbox_mem *p)
+{
+	uint8_t buf[TEE_SHA512_HASH_SIZE] = { 0 };
 	size_t len = 0;
 
 	switch (algo) {
 	case TEE_ALG_ECDSA_P384:
 		len = TEE_SHA384_HASH_SIZE;
+		if (msg_len == TEE_SHA384_HASH_SIZE)
+			break;
+
+		if (tee_hash_createdigest(TEE_ALG_SHA384, msg, msg_len,
+					  buf, sizeof(buf)))
+			panic();
 		break;
 	case TEE_ALG_ECDSA_P521:
 		len = TEE_SHA512_HASH_SIZE;
+		if (msg_len == TEE_SHA512_HASH_SIZE)
+			break;
+
+		if (tee_hash_createdigest(TEE_ALG_SHA512, msg, msg_len,
+					  buf, sizeof(buf)))
+			panic();
 		break;
 	default:
 		return TEE_ERROR_GENERIC;
 	}
 
-	if (*msg_len >= len)
-		*msg_len = len;
-
-	versal_mbox_alloc(len, msg, p);
-	*msg_len = len;
+	/* write the hash - or msg - to the message buffer */
+	versal_mbox_alloc(len, msg_len == len ? msg : buf, p);
 
 	return TEE_SUCCESS;
 }
@@ -172,34 +173,44 @@ static TEE_Result verify(uint32_t algo, struct ecc_public_key *key,
 	struct versal_mbox_mem p = { };
 	struct versal_mbox_mem cmd_buf = { };
 	struct cmd_args arg = { };
-	size_t key_bytes = 0;
-	size_t key_bits = 0;
 	uint32_t err = 0;
-	size_t align = key->curve == TEE_ECC_CURVE_NIST_P521 ? 2: 0;
+	size_t bytes = 0;
+	size_t bits = 0;
 
-	ret = ecc_get_key_size(key->curve, 0, &key_bytes, &key_bits);
+	ret = ecc_get_key_size(key->curve, 0, &bytes, &bits);
 	if (ret != TEE_SUCCESS)
 		return TEE_ERROR_BAD_PARAMETERS;
 
-	ret = ecc_prepare_msg(algo, msg, &msg_len, &p);
+	ret = ecc_prepare_msg(algo, msg, msg_len, &p);
 	if (ret)
 		return ret;
 
-	versal_mbox_alloc(key_bytes * 2 + align, NULL, &x);
+	versal_mbox_alloc(bytes * 2, NULL, &x);
 	crypto_bignum_bn2bin_eswap(key->curve, key->x, x.buf);
-	crypto_bignum_bn2bin_eswap(key->curve, key->y, (uint8_t *)
-				   x.buf + key_bytes + align);
-	/* Signature */
-	versal_mbox_alloc(sig_len, sig, &s);
+	crypto_bignum_bn2bin_eswap(key->curve, key->y,
+				   (uint8_t *)x.buf + bytes);
 
-	/* IPI cmd */
+	/* Validate the public key for the curve */
+	arg.data[0] = key->curve;
+	arg.dlen = 1;
+	arg.ibuf[0].buf = x.buf;
+	arg.ibuf[0].len = x.alloc_len;
+	if (versal_crypto_request(ELLIPTIC_VALIDATE_PUBLIC_KEY, &arg, &err)) {
+		EMSG("Versal ECC: %s", versal_ecc_error(err));
+		ret = TEE_ERROR_GENERIC;
+		goto out;
+	}
+	memset(&arg, 0, sizeof(arg));
+
+	/* Verify the message with the validated key */
+	versal_mbox_alloc(sig_len, sig, &s);
 	versal_mbox_alloc(sizeof(*cmd), NULL, &cmd_buf);
 
 	cmd = cmd_buf.buf;
 	cmd->signature_addr = virt_to_phys(s.buf);
 	cmd->pub_key_addr = virt_to_phys(x.buf);
 	cmd->hash_addr = virt_to_phys(p.buf);
-	cmd->hash_len = msg_len;
+	cmd->hash_len = p.len;
 	cmd->curve = key->curve;
 
 	arg.ibuf[0].buf = cmd;
@@ -216,7 +227,19 @@ static TEE_Result verify(uint32_t algo, struct ecc_public_key *key,
 		EMSG("Versal ECC: %s", versal_ecc_error(err));
 		ret = TEE_ERROR_GENERIC;
 	}
-
+#if 0
+	IMSG("Verify --------------------------------");
+	IMSG("Public key");
+	DHEXDUMP(x.buf, bytes * 2);
+	IMSG("Signature");
+	DHEXDUMP(s.buf, sig_len);
+	IMSG("Msg");
+	DHEXDUMP(msg, msg_len);
+	IMSG("Msg hash");
+	DHEXDUMP(p.buf, p.len);
+	IMSG(" --------------------------------------");
+#endif
+out:
 	free(p.buf);
 	free(x.buf);
 	free(s.buf);
@@ -237,26 +260,27 @@ static TEE_Result sign(uint32_t algo, struct ecc_keypair *key,
 	struct versal_mbox_mem s = { };
 	TEE_Result ret = TEE_SUCCESS;
 	struct cmd_args arg = { };
-	size_t key_bytes = 0;
-	size_t key_bits = 0;
 	uint32_t err = 0;
+	size_t bytes = 0;
+	size_t bits = 0;
 
-	ret = ecc_get_key_size(key->curve, 0, &key_bytes, &key_bits);
+	ret = ecc_get_key_size(key->curve, 0, &bytes, &bits);
 	if (ret != TEE_SUCCESS)
 		return TEE_ERROR_BAD_PARAMETERS;
 
-	ret = ecc_prepare_msg(algo, msg, &msg_len, &p);
+	/* Hash and update the length */
+	ret = ecc_prepare_msg(algo, msg, msg_len, &p);
 	if (ret)
 		return ret;
 
 	/* Ephemeral private key */
-	versal_mbox_alloc(key_bytes, NULL, &k);
-	ret = crypto_rng_read(k.buf, key_bytes);
+	versal_mbox_alloc(bytes, NULL, &k);
+	ret = crypto_rng_read(k.buf, bytes);
 	if (ret)
 		goto out;
 
 	/* Private key*/
-	versal_mbox_alloc(key_bytes, NULL, &d);
+	versal_mbox_alloc(bytes, NULL, &d);
 	crypto_bignum_bn2bin_eswap(key->curve, key->d, d.buf);
 
 	/* Signature */
@@ -269,7 +293,7 @@ static TEE_Result sign(uint32_t algo, struct ecc_keypair *key,
 	cmd->priv_key_addr = virt_to_phys(d.buf);
 	cmd->epriv_key_addr = virt_to_phys(k.buf);
 	cmd->hash_addr = virt_to_phys(p.buf);
-	cmd->hash_len = msg_len;
+	cmd->hash_len = p.len;
 	cmd->curve = key->curve;
 
 	arg.ibuf[0].buf = cmd;
@@ -289,8 +313,21 @@ static TEE_Result sign(uint32_t algo, struct ecc_keypair *key,
 	}
 
 	memcpy(sig, s.buf, *sig_len);
-	DMSG("Signature generated %ld",*sig_len);
-	DHEXDUMP(sig, *sig_len);
+#if 0
+	IMSG("Sign --------------------------------");
+	IMSG("ephemeral key:");
+	DHEXDUMP(k.buf, bytes);
+	IMSG("private key:");
+	DHEXDUMP(d.buf, bytes);
+	IMSG("msg:");
+	DHEXDUMP(msg, msg_len);
+	IMSG("msg hash:");
+	DHEXDUMP(p.buf, p.len);
+	IMSG("==> signature:");
+	DHEXDUMP(s.buf, *sig_len);
+	IMSG(" --------------------------------------");
+#endif
+
 out:
 	free(cmd);
 	free(k.buf);
@@ -339,7 +376,10 @@ static TEE_Result do_verify(struct drvcrypt_sign_data *sdata)
 
 static TEE_Result do_gen_keypair(struct ecc_keypair *keypair, size_t size_bits)
 {
-	/* Versal requires little endian so need to eswap on Versal IP ops */
+	/* Versal requires little endian so need to eswap on Versal IP ops.
+	 * We chose not to do it here because some tests might be using
+	 * their own keys
+	 */
 	return soft_keypair_ops->generate(keypair, size_bits);
 }
 
@@ -349,10 +389,13 @@ static TEE_Result do_alloc_keypair(struct ecc_keypair *s, size_t size_bits)
 
 	ret = crypto_asym_alloc_ecc_keypair(s, TEE_TYPE_ECDSA_KEYPAIR,
 					    size_bits);
-	if (!ret)
+	if (!ret) {
 		s->ops = NULL;
+		return ret;
 
-	return ret;
+	}
+
+	return TEE_ERROR_NOT_IMPLEMENTED;
 }
 
 static TEE_Result do_alloc_publickey(struct ecc_public_key *s, size_t size_bits)
@@ -361,10 +404,12 @@ static TEE_Result do_alloc_publickey(struct ecc_public_key *s, size_t size_bits)
 
 	ret = crypto_asym_alloc_ecc_public_key(s, TEE_TYPE_ECDSA_PUBLIC_KEY,
 					       size_bits);
-	if (!ret)
+	if (!ret) {
 		s->ops = NULL;
+		return ret;
+	}
 
-	return ret;
+	return TEE_ERROR_NOT_IMPLEMENTED;
 }
 
 static void do_free_publickey(struct ecc_public_key *s)
