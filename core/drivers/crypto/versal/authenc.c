@@ -25,6 +25,13 @@
 #include <utee_defines.h>
 #include <util.h>
 
+/*
+ * This driver does not queue/pad non-aligned data.
+ * Allow debug information for future PLM work:  if the PLM can not implement
+ * the required changes, we might be able to do it in OP-TEE.
+ */
+#define DEBUG_VERSAL_AES 0
+
 #include "ipi.h"
 
 #define GCM_TAG_LEN		16
@@ -392,12 +399,18 @@ static TEE_Result do_update_aad(struct drvcrypt_authenc_update_aad *dupdate)
 
 	versal_mbox_alloc(dupdate->aad.length, dupdate->aad.data, &p);
 
-	/* padding AAD with null to cacheline allows executing TAs */
+	/* padding AAD with null to cacheline allows executing TAs
+	 *  - padding to 16 fails.
+	 */
 	arg.data[0] = p.len % 16 ? p.alloc_len : p.len;
 	arg.dlen = 1;
 	arg.ibuf[0].buf = p.buf;
 	arg.ibuf[0].len = p.alloc_len;
 
+#if DEBUG_VERSAL_AES
+	IMSG("versal: aad length - requested: %ld, sent to plm: %ld",
+	     dupdate->aad.length, arg.data[0]);
+#endif
 	if (versal_crypto_request(AES_UPDATE_AAD, &arg, &err)) {
 		EMSG("AES_UPDATE_AAD error: %s", versal_aes_error(err));
 		ret = TEE_ERROR_GENERIC;
@@ -428,7 +441,7 @@ static TEE_Result update_payload(struct drvcrypt_authenc_update_payload
 	struct versal_node *node = NULL;
 	uint32_t err = 0;
 
-	if (dupdate->src.length % 4 || !dupdate->src.length) {
+	if (!dupdate->src.length || dupdate->src.length % 4) {
 		EMSG("Versal AES payload length not word aligned (len = %ld)",
 		     dupdate->src.length);
 		return TEE_ERROR_BAD_PARAMETERS;
@@ -440,7 +453,7 @@ static TEE_Result update_payload(struct drvcrypt_authenc_update_payload
 
 	input = input_cmd.buf;
 	input->input_addr = virt_to_phys(p.buf);
-	input->input_len = p.len;
+	input->input_len = p.len % 4 ? p.alloc_len : p.len;
 	input->is_last = is_last;
 
 	arg.ibuf[0].buf = input;
@@ -453,13 +466,19 @@ static TEE_Result update_payload(struct drvcrypt_authenc_update_payload
 	if (dupdate->encrypt)
 		id = AES_ENCRYPT_UPDATE;
 
+#if DEBUG_VERSAL_AES
+	IMSG("versal: payload length - requested %ld, sent to plm: %ld",
+	     dupdate->src.length, input->input_len);
+	IMSG("versal: destination length - %ld ", dupdate->dst.length);
+#endif
 	if (versal_crypto_request(id, &arg, &err)) {
 		EMSG("AES_UPDATE_PAYLOAD error: %s", versal_aes_error(err));
 		ret = TEE_ERROR_GENERIC;
 		goto out;
 	}
 
-	memcpy(dupdate->dst.data, q.buf, dupdate->dst.length);
+	if (dupdate->dst.data)
+		memcpy(dupdate->dst.data, q.buf, dupdate->dst.length);
 
 	/* save the context */
 	if (!is_last) {
