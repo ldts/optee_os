@@ -15,33 +15,26 @@
 
 #include "ipi.h"
 
-static void crypto_bignum_bn2bin_eswap(struct bignum *from, uint8_t *to)
+#define RSA_MAX_PRIV_EXP_LEN 512
+#define RSA_MAX_PUB_EXP_LEN 8
+#define RSA_MAX_MOD_LEN 512
+
+static void crypto_bignum_bn2bin_eswap(size_t size,
+				       struct bignum *from, uint8_t *to)
 {
+	size_t len = crypto_bignum_num_bytes(from);
+	uint8_t pad[RSA_MAX_MOD_LEN] = { 0 };
 	uint8_t tmp = 0;
 	size_t i = 0;
 	size_t j = 0;
-	size_t len = crypto_bignum_num_bytes(from);
 
-	if (len < sizeof(uint32_t)) {
-		/* public exponent should be 4 bytes:
-		   bignum chops off leading zeroes. Pad it */
-		uint8_t buf[8] = { 0 };
-		crypto_bignum_bn2bin(from, buf + 1);
-		for (i = 0, j = sizeof(uint32_t) - 1; i < j; i++, j--) {
-			tmp = buf[i];
-			buf[i] = buf[j];
-			buf[j] = tmp;
-		}
-		memcpy(to, buf, 8);
-		return;
+	crypto_bignum_bn2bin(from, pad + size - len);
+	for (i = 0, j = size - 1; i < j; i++, j--) {
+		tmp = pad[i];
+		pad[i] = pad[j];
+		pad[j] = tmp;
 	}
-
-	crypto_bignum_bn2bin(from, to);
-	for (i = 0, j = len - 1; i < j; i++, j--) {
-		tmp = to[i];
-		to[i] = to[j];
-		to[j] = tmp;
-	}
+	memcpy(to, pad, size);
 }
 
 static TEE_Result do_encrypt(struct drvcrypt_rsa_ed *rsa_data)
@@ -72,9 +65,10 @@ static TEE_Result do_encrypt(struct drvcrypt_rsa_ed *rsa_data)
 		panic();
 	}
 
-	versal_mbox_alloc(512 + crypto_bignum_num_bytes(p->e), NULL, &key);
-	crypto_bignum_bn2bin_eswap(p->n, key.buf);
-	crypto_bignum_bn2bin_eswap(p->e, (uint8_t *)key.buf + 512);
+	versal_mbox_alloc(RSA_MAX_MOD_LEN + RSA_MAX_PUB_EXP_LEN, NULL, &key);
+	crypto_bignum_bn2bin_eswap(rsa_data->key.n_size, p->n, key.buf);
+	crypto_bignum_bn2bin_eswap(RSA_MAX_PUB_EXP_LEN,
+				   p->e, (uint8_t *)key.buf + RSA_MAX_MOD_LEN);
 
 	versal_mbox_alloc(rsa_data->message.length, rsa_data->message.data,
 			  &msg);
@@ -82,7 +76,7 @@ static TEE_Result do_encrypt(struct drvcrypt_rsa_ed *rsa_data)
 	versal_mbox_alloc(sizeof(*cmd), NULL, &cmd_buf);
 
 	cmd = cmd_buf.buf;
-	cmd->key_len = crypto_bignum_num_bytes(p->n);
+	cmd->key_len = rsa_data->key.n_size;
 	cmd->data_addr = virt_to_phys(msg.buf);
 	cmd->key_addr = virt_to_phys(key.buf);
 
@@ -140,9 +134,10 @@ static TEE_Result do_decrypt(struct drvcrypt_rsa_ed *rsa_data)
 		panic();
 	}
 
-	versal_mbox_alloc(512 + crypto_bignum_num_bytes(p->d), NULL, &key);
-	crypto_bignum_bn2bin_eswap(p->n, key.buf);
-	crypto_bignum_bn2bin_eswap(p->d, (uint8_t *)key.buf + 512);
+	versal_mbox_alloc(RSA_MAX_MOD_LEN + RSA_MAX_PRIV_EXP_LEN, NULL, &key);
+	crypto_bignum_bn2bin_eswap(rsa_data->key.n_size, p->n, key.buf);
+	crypto_bignum_bn2bin_eswap(rsa_data->key.n_size, p->d,
+				   (uint8_t *)key.buf + RSA_MAX_MOD_LEN);
 
 	versal_mbox_alloc(rsa_data->cipher.length, rsa_data->cipher.data,
 			  &cipher);
@@ -150,7 +145,7 @@ static TEE_Result do_decrypt(struct drvcrypt_rsa_ed *rsa_data)
 	versal_mbox_alloc(sizeof(*cmd), NULL, &cmd_buf);
 
 	cmd = cmd_buf.buf;
-	cmd->key_len = crypto_bignum_num_bytes(p->n);
+	cmd->key_len = rsa_data->key.n_size;
 	cmd->data_addr = virt_to_phys(cipher.buf);
 	cmd->key_addr = virt_to_phys(key.buf);
 
