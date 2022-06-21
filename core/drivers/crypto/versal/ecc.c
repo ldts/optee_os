@@ -178,8 +178,15 @@ static TEE_Result verify(uint32_t algo, struct ecc_public_key *key,
 	size_t bits = 0;
 
 	ret = ecc_get_key_size(key->curve, 0, &bytes, &bits);
-	if (ret != TEE_SUCCESS)
-		return TEE_ERROR_BAD_PARAMETERS;
+	if (ret != TEE_SUCCESS) {
+		if (ret == TEE_ERROR_NOT_SUPPORTED) {
+			/* handle it in software */
+			return soft_public_ops->verify(algo, key,
+						       msg, msg_len,
+						       sig, sig_len);
+		}
+		return ret;
+	}
 
 	ret = ecc_prepare_msg(algo, msg, msg_len, &p);
 	if (ret)
@@ -253,8 +260,14 @@ static TEE_Result sign(uint32_t algo, struct ecc_keypair *key,
 	size_t bits = 0;
 
 	ret = ecc_get_key_size(key->curve, 0, &bytes, &bits);
-	if (ret != TEE_SUCCESS)
-		return TEE_ERROR_BAD_PARAMETERS;
+	if (ret != TEE_SUCCESS) {
+		if (ret == TEE_ERROR_NOT_SUPPORTED) {
+			/* handle it in software */
+			return soft_keypair_ops->sign(algo, key, msg, msg_len,
+						      sig, sig_len);
+		}
+		return ret;
+	}
 
 	/* Hash and update the length */
 	ret = ecc_prepare_msg(algo, msg, msg_len, &p);
