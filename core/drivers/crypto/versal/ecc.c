@@ -328,6 +328,7 @@ static TEE_Result sign(uint32_t algo, struct ecc_keypair *key,
 		goto out;
 	}
 
+	*sig_len = 2 * bytes;
 	memcpy(sig, s.buf, *sig_len);
 out:
 	free(cmd);
