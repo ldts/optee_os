@@ -15,28 +15,15 @@
 
 #include "ipi.h"
 
-#define VERSAL_RSA_DEBUG 0
-
 #define RSA_MAX_PRIV_EXP_LEN 512
-#define RSA_MAX_PUB_EXP_LEN 8
+#define RSA_MAX_PUB_EXP_LEN 4
 #define RSA_MAX_MOD_LEN 512
 
-static void crypto_bignum_bn2bin_eswap(size_t size,
-				       struct bignum *from, uint8_t *to)
+static void crypto_bignum_bn2bin_pad(size_t size,
+				     struct bignum *from, uint8_t *to)
 {
 	size_t len = crypto_bignum_num_bytes(from);
-	uint8_t pad[RSA_MAX_MOD_LEN] = { 0 };
-	uint8_t tmp = 0;
-	size_t i = 0;
-	size_t j = 0;
-
-	crypto_bignum_bn2bin(from, pad + size - len);
-	for (i = 0, j = size - 1; i < j; i++, j--) {
-		tmp = pad[i];
-		pad[i] = pad[j];
-		pad[j] = tmp;
-	}
-	memcpy(to, pad, size);
+	crypto_bignum_bn2bin(from, to + size - len);
 }
 
 static TEE_Result do_encrypt(struct drvcrypt_rsa_ed *rsa_data)
@@ -50,6 +37,7 @@ static TEE_Result do_encrypt(struct drvcrypt_rsa_ed *rsa_data)
 	TEE_Result ret = TEE_SUCCESS;
 	struct cmd_args arg = { };
 	uint32_t err = 0;
+	uint32_t pe = 0;
 
 	if (rsa_data->key.n_size == 128)
 		return TEE_ERROR_NOT_IMPLEMENTED;
@@ -69,9 +57,9 @@ static TEE_Result do_encrypt(struct drvcrypt_rsa_ed *rsa_data)
 	}
 
 	versal_mbox_alloc(RSA_MAX_MOD_LEN + RSA_MAX_PUB_EXP_LEN, NULL, &key);
-	crypto_bignum_bn2bin_eswap(RSA_MAX_MOD_LEN, p->n, key.buf);
-	crypto_bignum_bn2bin_eswap(RSA_MAX_PUB_EXP_LEN,
-				   p->e, (uint8_t *)key.buf + RSA_MAX_MOD_LEN);
+	crypto_bignum_bn2bin_pad(rsa_data->key.n_size, p->n, key.buf);
+	crypto_bignum_bn2bin_pad(RSA_MAX_PUB_EXP_LEN,
+				 p->e, (uint8_t *)key.buf + RSA_MAX_MOD_LEN);
 
 	versal_mbox_alloc(rsa_data->message.length, rsa_data->message.data,
 			  &msg);
@@ -101,15 +89,6 @@ static TEE_Result do_encrypt(struct drvcrypt_rsa_ed *rsa_data)
 	memcpy(rsa_data->cipher.data, cipher.buf, rsa_data->key.n_size);
 	rsa_data->cipher.length = rsa_data->key.n_size;
 
-#if VERSAL_RSA_DEBUG
-	IMSG("Public exponent length %ld", crypto_bignum_num_bytes(p->e));
-	IMSG("Key");
-	DHEXDUMP(key.buf, key.len);
-	IMSG("Encrypt Input");
-	DHEXDUMP(rsa_data->message.data, rsa_data->message.length);
-	IMSG("Encrypt output");
-	DHEXDUMP(rsa_data->cipher.data, rsa_data->key.n_size);
-#endif
 	ret = TEE_SUCCESS;
 out:
 	free(cipher.buf);
@@ -150,9 +129,9 @@ static TEE_Result do_decrypt(struct drvcrypt_rsa_ed *rsa_data)
 	}
 
 	versal_mbox_alloc(RSA_MAX_MOD_LEN + RSA_MAX_PRIV_EXP_LEN, NULL, &key);
-	crypto_bignum_bn2bin_eswap(RSA_MAX_MOD_LEN, p->n, key.buf);
-	crypto_bignum_bn2bin_eswap(RSA_MAX_PRIV_EXP_LEN, p->d,
-				   (uint8_t *)key.buf + RSA_MAX_MOD_LEN);
+	crypto_bignum_bn2bin_pad(rsa_data->key.n_size, p->n, key.buf);
+	crypto_bignum_bn2bin_pad(rsa_data->key.n_size, p->d,
+				 (uint8_t *)key.buf + RSA_MAX_MOD_LEN);
 
 	versal_mbox_alloc(rsa_data->cipher.length, rsa_data->cipher.data,
 			  &cipher);
@@ -181,17 +160,6 @@ static TEE_Result do_decrypt(struct drvcrypt_rsa_ed *rsa_data)
 
 	rsa_data->message.length = rsa_data->key.n_size;
 	memcpy(rsa_data->message.data, msg.buf, rsa_data->message.length);
-
-#if VERSAL_RSA_DEBUG
-	IMSG("Private exponent length %ld", crypto_bignum_num_bytes(p->d));
-	IMSG("Key");
-	DHEXDUMP(key.buf, key.len);
-	IMSG("Decrypt Input");
-	DHEXDUMP(rsa_data->cipher.data, rsa_data->cipher.length);
-	IMSG("Decrypt output");
-	DHEXDUMP(rsa_data->message.data, rsa_data->message.length);
-#endif
-
 	ret = TEE_SUCCESS;
 out:
 	free(cipher.buf);
@@ -216,8 +184,7 @@ static TEE_Result do_ssa_verify(struct drvcrypt_rsa_ssa *ssa_data __unused)
 	return TEE_ERROR_NOT_IMPLEMENTED;
 }
 
-static TEE_Result do_gen_keypair(struct rsa_keypair *keypair __unused,
-				 size_t size_bytes __unused)
+static TEE_Result do_gen_keypair(struct rsa_keypair *keypair, size_t size_bits)
 {
 	/* delegating to software */
 	return TEE_ERROR_NOT_IMPLEMENTED;
