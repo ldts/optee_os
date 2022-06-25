@@ -37,7 +37,6 @@ static TEE_Result do_encrypt(struct drvcrypt_rsa_ed *rsa_data)
 	TEE_Result ret = TEE_SUCCESS;
 	struct cmd_args arg = { };
 	uint32_t err = 0;
-	uint32_t pe = 0;
 
 	if (rsa_data->key.n_size == 128)
 		return TEE_ERROR_NOT_IMPLEMENTED;
