@@ -82,4 +82,15 @@ static TEE_Result platform_banner(void)
 
 	return TEE_SUCCESS;
 }
+
+#if defined(CFG_RPMB_FS)
+bool plat_rpmb_key_is_ready(void)
+{
+	/* We need to discuss when to allow the RPMB key to be written
+	 *  - needs a stable/unmuttable HUK
+	 */
+	return false;
+}
+#endif
+
 service_init(platform_banner);
