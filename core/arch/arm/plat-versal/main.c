@@ -17,6 +17,7 @@
 #include <platform_config.h>
 #include <stdint.h>
 #include <string.h>
+#include <tee/tee_fs.h>
 #include <trace.h>
 
 static struct gic_data gic_data;
