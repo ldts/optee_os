@@ -216,6 +216,7 @@ static TEE_Result rsassa_pkcs1_v1_5_sign(struct drvcrypt_rsa_ssa *ssa_data)
 	rsa_data.message.length = ssa_data->signature.length;
 	rsa_data.cipher.data = EM.data;
 	rsa_data.cipher.length = EM.length;
+	rsa_data.hash_algo = ssa_data->hash_algo;
 
 	ret = rsa->decrypt(&rsa_data);
 
@@ -269,7 +270,7 @@ static TEE_Result rsassa_pkcs1_v1_5_verify(struct drvcrypt_rsa_ssa *ssa_data)
 		rsa_data.message.length = ssa_data->signature.length;
 		rsa_data.cipher.data = EM.data;
 		rsa_data.cipher.length = EM.length;
-
+		rsa_data.hash_algo = ssa_data->hash_algo;
 		ret = rsa->encrypt(&rsa_data);
 
 		/* Set the cipher size */
@@ -859,7 +860,8 @@ static TEE_Result rsassa_pss_verify(struct drvcrypt_rsa_ssa *ssa_data)
 		CRYPTO_TRACE("EMSA PSS Verify returned 0x%08" PRIx32, ret);
 	} else {
 		CRYPTO_TRACE("RSA NO PAD returned 0x%08" PRIx32, ret);
-		ret = TEE_ERROR_SIGNATURE_INVALID;
+		if (ret != TEE_ERROR_NOT_IMPLEMENTED)
+			ret = TEE_ERROR_SIGNATURE_INVALID;
 	}
 
 end_pss_verify:
