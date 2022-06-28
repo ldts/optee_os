@@ -60,7 +60,7 @@ CFG_VERSAL_FPGA_DDR_ADDR  ?= 0x40000000
 CFG_VERSAL_PUF            ?= y
 
 # GPIO
-CFG_ZYNQ_GPIO             ?= y
+CFG_VERSAL_GPIO           ?= y
 
 # HUK AES-GCM key selection:
 # To secure the system the key must be one of the eFUSEd keys

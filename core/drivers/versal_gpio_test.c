@@ -14,7 +14,7 @@
  */
 
 #include <arm.h>
-#include <drivers/zynq_gpio.h>
+#include <drivers/versal_gpio.h>
 #include <gpio.h>
 #include <initcall.h>
 #include <kernel/panic.h>
@@ -27,10 +27,10 @@
 
 static TEE_Result test_gpio_poll_out(void)
 {
-	struct zynq_gpio_chip gpio = { };
+	struct versal_gpio_chip gpio = { };
 	unsigned int pin = 37;
 
-	if (zynq_gpio_pmc_init(&gpio))
+	if (versal_gpio_pmc_init(&gpio))
 		return TEE_ERROR_GENERIC;
 
 	gpio.chip.ops->set_direction(&gpio.chip, pin, GPIO_DIR_OUT);
@@ -48,10 +48,10 @@ static TEE_Result test_gpio_poll_out(void)
 
 static TEE_Result test_gpio_poll_inp(void)
 {
-	struct zynq_gpio_chip gpio = { };
+	struct versal_gpio_chip gpio = { };
 	unsigned int pin = 37;
 
-	if (zynq_gpio_init(&gpio))
+	if (versal_gpio_ps_init(&gpio))
 		return TEE_ERROR_GENERIC;
 
 	gpio.chip.ops->set_direction(&gpio.chip, pin, GPIO_DIR_IN);

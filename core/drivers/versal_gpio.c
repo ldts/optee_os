@@ -26,7 +26,7 @@
 #define DIRM_OFFSET(__bank)	(0x204 + (0x40 * __bank))
 #define OUTEN_OFFSET(__bank)	(0x208 + (0x40 * __bank))
 
-#define VERSAL_GPIO_MID_PIN_NUM		16
+#define VERSAL_GPIO_MID_PIN		16
 #define VERSAL_GPIO_UPPER_MASK		0xFFFF0000
 
 /* Max pins in the PMC_GPIO devices
@@ -40,7 +40,7 @@
 #define VERSAL_GPIO_PMC_MAX_BANK	5
 
 static const struct versal_gpio_platform_data versal_gpio_pmc_def = {
-	.max_bank = VERSAL_GPIO_PMC_MAX_BANK
+	.max_bank = VERSAL_GPIO_PMC_MAX_BANK,
 	.ngpio = VERSAL_GPIO_PMC_NR_GPIOS,
 	.label = "versal_pmc_gpio",
 	.bank_min[0] = 0,
@@ -117,8 +117,8 @@ static void gpio_set_value(struct versal_gpio_chip *chip, uint32_t gpio,
 
 	versal_gpio_get_pin(chip, gpio, &bank, &pin);
 
-	if (bank_pin >= VERSAL_GPIO_MID_pin) {
-		bank -= VERSAL_GPIO_MID_pin;
+	if (bank >= VERSAL_GPIO_MID_PIN) {
+		bank -= VERSAL_GPIO_MID_PIN;
 		off = DATA_MSW_OFFSET(bank);
 	} else {
 		off = DATA_LSW_OFFSET(bank);
@@ -129,7 +129,7 @@ static void gpio_set_value(struct versal_gpio_chip *chip, uint32_t gpio,
 	 * the upper 16 bits is the mask and lower 16 bits is the data
 	 */
 	val = !!val;
-	val = ~(1 << (pin + VERSAL_GPIO_MID_pin)) &
+	val = ~(1 << (pin + VERSAL_GPIO_MID_PIN)) &
 		((val << pin) | VERSAL_GPIO_UPPER_MASK);
 
 	io_write32(chip->base + off, val);
