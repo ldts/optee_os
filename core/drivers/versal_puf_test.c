@@ -38,6 +38,8 @@ static TEE_Result test_puf_check_api(void)
 static struct versal_puf_data buf = { };
 static struct versal_puf_cfg cfg  = { };
 
+uint32_t puf_id[PUF_ID_WORDS];
+
 static TEE_Result test_puf_register(void)
 {
 	cfg.global_var_filter = XPUF_GLBL_VAR_FLTR_OPTION;
@@ -61,6 +63,10 @@ static TEE_Result test_puf_register(void)
 	     buf.puf_id[0], buf.puf_id[1], buf.puf_id[2], buf.puf_id[3],
 	     buf.puf_id[4], buf.puf_id[5], buf.puf_id[6], buf.puf_id[7]);
 #endif
+
+	memcpy(puf_id, buf.puf_id, sizeof(puf_id));
+	memset(buf.puf_id, 0, sizeof(buf.puf_id));
+
 	return TEE_SUCCESS;
 }
 
@@ -70,6 +76,9 @@ static TEE_Result test_puf_regenerate(void)
 	cfg.read_option = XPUF_READ_FROM_RAM;
 
 	if (versal_puf_regenerate(&buf, &cfg))
+		return TEE_ERROR_GENERIC;
+
+	if (memcmp(puf_id, buf.puf_id, sizeof(puf_id)))
 		return TEE_ERROR_GENERIC;
 
 	return TEE_SUCCESS;
