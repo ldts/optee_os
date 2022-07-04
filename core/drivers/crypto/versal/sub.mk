@@ -4,3 +4,5 @@ srcs-y += ipi.c
 srcs-y += authenc.c
 srcs-y += hash.c
 srcs-y += ecc.c
+srcs-y += rsa.c
+
