@@ -8,4 +8,7 @@ $(call force,CFG_CRYPTO_DRV_ECC,y)
 $(call force,CFG_CRYPTO_DRV_RSA,y)
 $(call force,CFG_CRYPTO_DRV_AUTHENC,y)
 
+# SHA3-384 optional
+CFG_CRYPTO_DRV_HASH ?= n
+
 endif
