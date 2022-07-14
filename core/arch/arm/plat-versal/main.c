@@ -9,9 +9,11 @@
 #include <drivers/pl011.h>
 #include <drivers/versal_nvm.h>
 #include <drivers/versal_pm.h>
+#include<io.h>
 #include <kernel/boot.h>
 #include <kernel/interrupt.h>
 #include <kernel/misc.h>
+#include <kernel/panic.h>
 #include <kernel/tee_time.h>
 #include <mm/core_memprot.h>
 #include <platform_config.h>
@@ -20,6 +22,9 @@
 #include <tee/tee_fs.h>
 #include <trace.h>
 
+#define SECURE_BOOT_STATE_REG 0x16c
+
+static bool secure_boot;
 static struct gic_data gic_data;
 static struct pl011_data console_data;
 
@@ -32,6 +37,8 @@ register_phys_mem_pgdir(MEM_AREA_IO_SEC,
 
 register_phys_mem_pgdir(MEM_AREA_IO_SEC,
 			GIC_BASE + GICD_OFFSET, CORE_MMU_PGDIR_SIZE);
+
+register_phys_mem(MEM_AREA_IO_SEC, PLM_RTCA, PLM_RTCA_LEN);
 
 register_ddr(DRAM0_BASE, DRAM0_SIZE);
 
@@ -60,6 +67,22 @@ void console_init(void)
 	register_serial_console(&console_data.chip);
 }
 
+static void check_secure_boot(void)
+{
+	vaddr_t plm_rtca = (vaddr_t)phys_to_virt(PLM_RTCA, MEM_AREA_IO_SEC,
+						 PLM_RTCA_LEN);
+	uint32_t val = 0;
+
+	assert(plm_rtca);
+
+	val = io_read32(plm_rtca + SECURE_BOOT_STATE_REG);
+	if (val & 3)
+		secure_boot = true;
+
+	IMSG("Secure Boot:\t%sauthenticated, %sencrypted",
+	     val & BIT(0) ? "" : "not ", val & BIT(1) ? "" : "not ");
+}
+
 static TEE_Result platform_banner(void)
 {
 	TEE_Result ret = TEE_SUCCESS;
@@ -71,7 +94,9 @@ static TEE_Result platform_banner(void)
 		return ret;
 	}
 
-	IMSG("Platform Versal - Silicon Revision v%d", version);
+	IMSG("Platform Versal:\tSilicon Revision v%d", version);
+
+	check_secure_boot();
 
 	if (IS_ENABLED(CFG_VERSAL_FPGA_INIT)) {
 		ret = versal_write_fpga(CFG_VERSAL_FPGA_DDR_ADDR);
@@ -87,7 +112,7 @@ static TEE_Result platform_banner(void)
 #if defined(CFG_RPMB_FS)
 bool plat_rpmb_key_is_ready(void)
 {
-	return false;
+	return secure_boot;
 }
 #endif
 
