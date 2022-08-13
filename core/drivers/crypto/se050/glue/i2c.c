@@ -56,7 +56,8 @@ int glue_i2c_init(void)
 
 static TEE_Result load_trampoline(void)
 {
-	transfer = rpc_io_i2c_transfer;
+	if (IS_ENABLED(CFG_CORE_SE05X_I2C_TRAMPOLINE))
+		transfer = rpc_io_i2c_transfer;
 
 	return TEE_SUCCESS;
 }
