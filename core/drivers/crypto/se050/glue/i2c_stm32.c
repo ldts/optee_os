@@ -1,34 +1,17 @@
 // SPDX-License-Identifier: BSD-2-Clause
 /*
  * Copyright (C) Foundries Ltd. 2022 - All Rights Reserved
- * Author: Jorge Ramirez-Ortiz <jorge@foundries.io>
+ * Author: Igor Opaniuk <igor.opaniuk@foundries.io>
  */
 
 #include <drivers/stm32_i2c.h>
 #include <i2c_native.h>
-#include <kernel/boot.h>
 #include <kernel/dt.h>
+#include <kernel/boot.h>
 #include <libfdt.h>
 #include <phNxpEsePal_i2c.h>
 
 static struct i2c_handle_s i2c;
-
-TEE_Result native_i2c_transfer(struct rpc_i2c_request *req, size_t *bytes)
-{
-	if (req->mode == RPC_I2C_MODE_READ) {
-		if (stm32_i2c_master_receive(&i2c, req->chip << 1, req->buffer,
-					     req->buffer_len, 500))
-			return TEE_ERROR_GENERIC;
-	} else {
-		if (stm32_i2c_master_transmit(&i2c, req->chip << 1, req->buffer,
-					      req->buffer_len, 500))
-			return TEE_ERROR_GENERIC;
-	}
-
-	*bytes = req->buffer_len;
-
-	return TEE_SUCCESS;
-}
 
 static int dt_i2c_bus_config(struct stm32_i2c_init_s *init,
 			     struct stm32_pinctrl **pctrl,  size_t *pcnt)
@@ -46,12 +29,16 @@ static int dt_i2c_bus_config(struct stm32_i2c_init_s *init,
 	snprintf(bus, sizeof(bus), "i2c%d", CFG_CORE_SE05X_I2C_BUS);
 
 	path = fdt_get_alias(fdt, bus);
-	if (!path)
+	if (!path) {
+		EMSG("%d", __LINE__);
 		return -FDT_ERR_NOTFOUND;
+	}
 
 	node = fdt_path_offset(fdt, path);
-	if (node < 0)
+	if (node < 0) {
+		EMSG("%d", __LINE__);
 		return -FDT_ERR_NOTFOUND;
+	}
 
 	cuint = fdt_getprop(fdt, node, "clock-frequency", NULL);
 	if (cuint && fdt32_to_cpu(*cuint) != CFG_CORE_SE05X_BAUDRATE)
@@ -68,9 +55,10 @@ int native_i2c_init(void)
 	struct stm32_pinctrl *pinctrl = NULL;
 	size_t pin_count = 0;
 
-	/* No need to re-init */
-	if (i2c.base.pa)
+	if (i2c.base.pa) {
+		IMSG("ignore re-init");
 		return 0;
+	}
 
 	/* support only one device on the platform */
 	if (dt_i2c_bus_config(&i2c_init, &pinctrl, &pin_count))
@@ -86,4 +74,29 @@ int native_i2c_init(void)
 	stm32_i2c_resume(&i2c);
 
 	return stm32_i2c_init(&i2c, &i2c_init);
+}
+
+TEE_Result native_i2c_transfer(struct rpc_i2c_request *req, size_t *bytes)
+{
+	if (req->mode == RPC_I2C_MODE_READ) {
+		IMSG("READ %d", req->buffer_len);
+		if (stm32_i2c_master_receive(&i2c, req->chip << 1, req->buffer,
+					     req->buffer_len, 200)) {
+			IMSG("\tfailed");
+			return TEE_ERROR_GENERIC;
+		}
+		IMSG("\tpassed");
+	} else {
+		IMSG("WRITE %d", req->buffer_len);
+		if (stm32_i2c_master_transmit(&i2c, req->chip << 1, req->buffer,
+					      req->buffer_len, 200)) {
+			IMSG("\tfailed");
+			return TEE_ERROR_GENERIC;
+		}
+		IMSG("\tpassed");
+	}
+
+	*bytes = req->buffer_len;
+
+	return TEE_SUCCESS;
 }

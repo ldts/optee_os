@@ -1,0 +1,283 @@
+#if 0
+/ {
+    soc {
+        pinctrl: pin-controller@50002000 {
+            smcu0-gpios =
+              <&gpiof 14 0>, /* SMCU0 reset */
+              <&gpiok 0 0>; /* SMCU0 boot */
+
+            gyro-gpios =
+              <&gpiok 4 0>; /* ACC_GYR_AP_GPIO_INT1 */
+
+            3v3-gpios =
+              <&gpioj 12 0>, /* AP_3V3_SW_PWRGD */
+              <&gpiog 10 0>; /* AP_3V3_SW_TURN_ON */
+
+            smcu0-gpios =
+              <&gpiok 0 0>, /* BOOT0 */
+              <&gpiof 14 0>, /* RST_L */
+              <&gpioj 10 0>, /* SWCLK */
+              <&gpioj 11 0>; /* SWDIO */
+
+            smcu1-gpios =
+              <&gpiok 2 0>, /* BOOT0 */
+              <&gpiof 15 0>, /* RST_L */
+              <&gpioi 12 0>, /* SWCLK */
+              <&gpioi 13 0>; /* SWDIO */
+
+            hwrev_gpios: hwrev_gpios =
+              <&gpiod 10 0>, /* HW_REV0 */
+              <&gpiod 11 0>, /* HW_REV1 */
+              <&gpiod 13 0>, /* HW_REV2 */
+              <&gpiod 14 0>, /* HW_REV3 */
+              <&gpioe 12 0>, /* HW_REV4 */
+              <&gpioe 13 0>, /* HW_REV5 */
+              <&gpioe 14 0>, /* HW_REV6 */
+              <&gpioe 15 0>; /* HW_REV7 */
+
+            ism-gpios =
+              <&gpiof 7 0>, /* BOOTLOAD_L */
+              <&gpiof 8 0>, /* JTAG_TCK */
+              <&gpiof 9 0>, /* JTAG_TMS */
+              <&gpiof 6 0>; /* RESET_L */
+
+            test-gpios =
+              <&gpioc 2 0>, /* TEST_MODE0 */
+              <&gpioc 3 0>; /* TEST_MODE1 */
+
+            m2-gpios =
+              <&gpioa 4 0>, /* FULL_PWR_OFF_L */
+              <&gpioa 6 0>, /* GPS_DISABLE_L */
+              <&gpioa 3 0>, /* W_DISABLE_L */
+              <&gpioa 5 0>; /* RESET_L */
+
+            rst-gpios =
+              <&gpioi 8 0>, /* ETH1_RESET_L */
+              <&gpiof 11 0>, /* USB_HUB_RESET_L */
+              <&gpiog 2 0>; /* EMMC_SDMMC2_GPIO_RST_L */
+
+            cel-gpios =
+              <&gpioi 15 0>, /* BLE_EN */
+              <&gpioi 14 0>, /* WIFI_EN */
+              <&gpioj 15 0>, /* WIFI_WLAN_RFKILL_L */
+              <&gpioi 7 0>; /* BT_WAKEHOST_OD */
+
+            pmic-gpios =
+              <&gpioj 13 0>, /* MR_L */
+              <&gpioj 14 0>, /* PONKEY_L */
+              <&gpioa 0 0>; /* WKUP_INT_L */
+
+            rtc-gpios =
+              <&gpioi 0 0>, /* CE_SPI2_NSS */
+              <&gpioi 6 0>, /* CLKOE */
+              <&gpioc 13 0>; /* INT_L */
+
+            general-gpios =
+              <&gpioh 15 0>, /* FD_CAN1_MODE */
+              <&gpiob 1 0>, /* LED_GRN_STATUS1 */
+              <&gpiof 3 0>; /* USD_AP_SLOT_DET_L */
+        };
+    };
+};
+#endif
+
+/*-------------------------------------------------*/
+
+&gpioa {
+    M2_W_DISABLE_L {
+        gpios = <3 GPIO_ACTIVE_LOW>;
+        gpio-hog;
+        bias-disable;
+        drive-push-pull;
+        output-low;
+    };
+
+    M2_FULL_PWR_OFF_L {
+        gpios = <4 GPIO_ACTIVE_LOW>;
+        gpio-hog;
+        bias-disable;
+        drive-push-pull;
+        output-low;
+    };
+
+    AP_M2_RESET_L {
+        gpios = <5 GPIO_ACTIVE_LOW>;
+        bias-disable;
+        drive-open-drain;
+        output-low;
+    };
+
+    M2_GPS_DISABLE_L {
+        gpios = <6 GPIO_ACTIVE_LOW>;
+        gpio-hog;
+        bias-disable;
+        drive-push-pull;
+        output-low;
+    };
+};
+
+&gpiof {
+    ISM_RESET_L {
+        gpios = <6 GPIO_ACTIVE_LOW>;
+        drive-open-drain;
+        bias-disable;
+    };
+
+    ISM_BOOTLOAD_L {
+        gpios = <7 GPIO_ACTIVE_LOW>;
+        drive-open-drain;
+        bias-pull-up;
+    };
+
+    ISM_JTAG_TCK {
+        gpios = <8 GPIO_ACTIVE_HIGH>;
+        gpio-hog;
+        bias-pull-up;
+        output-high;
+    };
+
+    ISM_JTAG_TMS {
+        gpios = <9 GPIO_ACTIVE_HIGH>;
+        gpio-hog;
+        bias-pull-up;
+        output-high;
+    };
+
+    USB_HUB_RESET_L {
+        gpios = <11 GPIO_ACTIVE_LOW>;
+        drive-push-pull;
+        output-high;
+        bias-disable;
+    };
+
+    AP_SMCU0_RESET_L {
+        gpios = <14 GPIO_ACTIVE_LOW>;
+        drive-open-drain;
+        output-low;
+        bias-disable;
+    };
+
+    AP_SMCU1_RESET_L {
+        gpios = <15 GPIO_ACTIVE_LOW>;
+        drive-open-drain;
+        output-low;
+        bias-disable;
+    };
+};
+
+&gpiog {
+    EMMC_SDMMC2_GPIO_RST_L {
+        gpios = <2 GPIO_ACTIVE_LOW>;
+        gpio-hog;
+        drive-open-drain;
+        output-high;
+        bias-disable;
+    };
+
+    AP_3V3_SW_TURN_ON {
+        gpios = <10 GPIO_ACTIVE_HIGH>;
+        gpio-hog;
+        drive-push-pull;
+        output-high;
+        bias-disable;
+    };
+};
+
+&gpioh {
+    FD_CAN1_MODE{
+        gpios = <15 GPIO_ACTIVE_HIGH>;
+        drive-push-pull;
+        output-low;
+        bias-disable;
+    };
+};
+
+&gpioi {
+    AP_WIFI_EN {
+        gpios = <4 GPIO_ACTIVE_HIGH>;
+        drive-push-pull;
+        output-high;
+        bias-disable;
+    };
+
+    AP_BLE_EN {
+        gpios = <5 GPIO_ACTIVE_HIGH>;
+        drive-push-pull;
+        output-high;
+        bias-disable;
+    };
+
+    AP_RTC_CLKOE {
+        gpios = <6 GPIO_ACTIVE_HIGH>;
+        gpio-hog;
+        drive-push-pull;
+        output-low;
+        bias-disable;
+    };
+
+// TODO: fix with output-* setting
+#if 0
+    BT_WAKEHOST_OD {
+        gpios = <7 GPIO_ACTIVE_LOW>;
+        gpio-hog;
+        bias-disable;
+    };
+
+    AP_SMCU1_SWCLK {
+        gpios = <12 GPIO_ACTIVE_HIGH>;
+        gpio-hog;
+        bias-pull-up;
+    };
+
+    AP_SMCU1_SWDIO {
+        gpios = <13 GPIO_ACTIVE_HIGH>;
+        gpio-hog;
+        bias-pull-up;
+    };
+#endif
+};
+
+&gpioj {
+    AP_3V3_SW_PWRGD {
+        gpios = <12 GPIO_ACTIVE_HIGH>;
+        bias-disable;
+    };
+
+// TODO: fix with output-* setting
+#if 0
+    AP_SMCU0_SWCLK {
+        gpios = <10 GPIO_ACTIVE_HIGH>;
+        gpio-hog;
+        bias-pull-up;
+    };
+
+    AP_SMCU0_SWDIO {
+        gpios = <11 GPIO_ACTIVE_HIGH>;
+        gpio-hog;
+        bias-pull-up;
+    };
+#endif
+
+    AP_WIFI_WLAN_RFKILL_L {
+        gpios = <15 GPIO_ACTIVE_LOW>;
+        drive-push-pull;
+        output-high;
+        bias-disable;
+    };
+};
+
+&gpiok {
+    AP_SMCU0_BOOT0 {
+        gpios = <0 GPIO_ACTIVE_HIGH>;
+        drive-push-pull;
+        output-low;
+        bias-disable;
+    };
+
+    AP_SMCU1_BOOT0 {
+        gpios = <2 GPIO_ACTIVE_HIGH>;
+        drive-push-pull;
+        output-low;
+        bias-disable;
+    };
+};

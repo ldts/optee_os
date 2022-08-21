@@ -929,6 +929,7 @@ static int i2c_wait_txis(struct i2c_handle_s *hi2c, uint64_t timeout_ref)
 	while (!timeout_elapsed(timeout_ref)) {
 		if (io_read32(get_base(hi2c) + I2C_ISR) & I2C_ISR_TXIS)
 			break;
+
 		if (i2c_ack_failed(hi2c, timeout_ref))
 			return -1;
 	}
@@ -984,8 +985,7 @@ static void i2c_transfer_config(struct i2c_handle_s *hi2c, uint32_t dev_addr,
 			      (startstop >> (31U - I2C_CR2_RD_WRN_OFFSET)));
 	uint32_t set_value = (dev_addr & I2C_CR2_SADD) |
 			     ((size << I2C_CR2_NBYTES_OFFSET) &
-			      I2C_CR2_NBYTES) |
-			     i2c_mode | startstop;
+			      I2C_CR2_NBYTES) | i2c_mode | startstop;
 
 	io_clrsetbits32(get_base(hi2c) + I2C_CR2, clr_value, set_value);
 }
@@ -1159,7 +1159,6 @@ static int i2c_write(struct i2c_handle_s *hi2c, struct i2c_request *request,
 						    I2C_NO_STARTSTOP);
 			}
 		}
-
 	} while (xfer_count > 0U);
 
 	/*
