@@ -442,7 +442,7 @@ static TEE_Result update_payload(struct drvcrypt_authenc_update_payload
 
 	input = input_cmd.buf;
 	input->input_addr = virt_to_phys(p.buf);
-	input->input_len = p.len % 4 ? p.alloc_len : p.len;
+	input->input_len = p.len % 16 ? p.alloc_len : p.len;
 	input->is_last = is_last;
 
 	arg.ibuf[0].mem = input_cmd;
