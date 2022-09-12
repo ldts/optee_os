@@ -121,6 +121,7 @@ static TEE_Result do_hash_final(struct crypto_hash_ctx *ctx,
 				uint8_t *digest, size_t len)
 {
 	struct versal_hash_ctx *c = to_versal_ctx(ctx);
+	struct update_request *next = NULL;
 	struct update_request *req = NULL;
 	struct versal_mbox_mem p = { };
 	TEE_Result ret = TEE_SUCCESS;
@@ -132,7 +133,7 @@ static TEE_Result do_hash_final(struct crypto_hash_ctx *ctx,
 
 	/* Book the engine */
 	mutex_lock(&lock);
-	STAILQ_FOREACH(req, &c->req_list, link) {
+	STAILQ_FOREACH_SAFE(req, &c->req_list, link, next) {
 		if (hash_update(ctx, req->data, req->len)) {
 			/* Release the engine */
 			mutex_unlock(&lock);
@@ -194,12 +195,13 @@ static void do_hash_copy_state(struct crypto_hash_ctx *dst_ctx,
 static void do_hash_free(struct crypto_hash_ctx *ctx)
 {
 	struct versal_hash_ctx *hctx = NULL;
+	struct update_request *next = NULL;
 	struct update_request *req = NULL;
 
 	hctx = container_of(ctx, struct versal_hash_ctx, hash_ctx);
 
 	/* Requests were pushed but never finalized */
-	STAILQ_FOREACH(req, &hctx->req_list, link) {
+	STAILQ_FOREACH_SAFE(req, &hctx->req_list, link, next) {
 		free(req->data);
 		free(req);
 	}

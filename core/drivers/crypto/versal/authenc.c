@@ -616,6 +616,7 @@ static void do_final(void *ctx __unused)
 static void do_free(void *ctx)
 {
 	struct versal_ae_ctx *c = to_versal_ctx(ctx);
+	struct versal_node *next = NULL;
 	struct versal_node *node = NULL;
 
 	if (refcount_dec(&engine.refc)) {
@@ -625,7 +626,7 @@ static void do_free(void *ctx)
 		free(engine.init.nonce.buf);
 		free(engine.init.key.buf);
 		memset(&engine.init, 0, sizeof(engine.init));
-		STAILQ_FOREACH(node, &engine.replay_list, link) {
+		STAILQ_FOREACH_SAFE(node, &engine.replay_list, link, next) {
 			STAILQ_REMOVE(&engine.replay_list, node,
 				      versal_node, link);
 			if (node->is_aad) {
