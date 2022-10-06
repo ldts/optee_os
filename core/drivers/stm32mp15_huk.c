@@ -8,13 +8,15 @@
 #include <config.h>
 #include <crypto/crypto.h>
 #include <drivers/stm32_bsec.h>
+#include <kernel/panic.h>
 #include <kernel/tee_common_otp.h>
 #include <mempool.h>
 #include <platform_config.h>
 #include <string.h>
 #include <string_ext.h>
 
-static bool stm32mp15_huk_initialized;
+static bool stm32mp15_huk_init;
+static bool stm32mp15_huk_lock;
 
 static TEE_Result stm32mp15_read_uid(uint32_t *uid)
 {
@@ -141,12 +143,23 @@ out:
 	memzero_explicit(p, HW_UNIQUE_KEY_LENGTH);
 	mempool_free(mempool_default, p);
 
-	if (!ret && !stm32mp15_huk_initialized) {
-		stm32mp15_huk_initialized = true;
+	if (ret)
+		return ret;
+
+	if (stm32mp15_huk_init) {
+		/* tamper detection */
+		if (stm32mp15_huk_lock != lock)
+			panic();
+	} else {
+		stm32mp15_huk_init = true;
+		stm32mp15_huk_lock = lock;
+
 		IMSG("HUK %slocked", lock ? "" : "un");
 		DHEXDUMP(hwkey->data, HW_UNIQUE_KEY_LENGTH);
 	}
 
-	return ret;
+	hwkey->locked = stm32mp15_huk_lock;
+
+	return TEE_SUCCESS;
 }
 
