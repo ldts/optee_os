@@ -24,6 +24,7 @@
 #include <platform_config.h>
 #include <sm/psci.h>
 #include <stm32_util.h>
+#include <tee/tee_fs.h>
 #include <trace.h>
 
 register_phys_mem_pgdir(MEM_AREA_IO_NSEC, APB1_BASE, APB1_SIZE);
@@ -510,3 +511,15 @@ TEE_Result stm32_get_iwdg_otp_config(paddr_t pbase,
 	return TEE_SUCCESS;
 }
 #endif /*CFG_STM32_IWDG*/
+
+#if defined(CFG_RPMB_FS)
+bool plat_rpmb_key_is_ready(void)
+{
+	struct tee_hw_unique_key hwkey = { };
+
+	if (tee_otp_get_hw_unique_key(&hwkey) || !hwkey.locked)
+		return false;
+
+	return stm32mp_is_closed_device();
+}
+#endif
