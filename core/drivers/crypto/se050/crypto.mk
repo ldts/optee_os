@@ -4,7 +4,10 @@ $(call force,CFG_CRYPTO_DRIVER,y)
 CFG_CRYPTO_DRIVER_DEBUG ?= 0
 
 # SE050 initialization
-# Enables the SCP03 key rotation
+# Rotate the SCP03 keys during SCP03 init (does not require user intervention).
+# CAUTION: the provisioning configuration chosen might require a stable HUK.
+CFG_CORE_SE05X_SCP03_PROVISION_ON_INIT ?= n
+# Rotate the SCP03 keys via PTA (request from Normal World).
 CFG_CORE_SE05X_SCP03_PROVISION ?= n
 # Displays the SE050 device information on the console at boot (i.e. OEFID)
 CFG_CORE_SE05X_DISPLAY_INFO ?= y
