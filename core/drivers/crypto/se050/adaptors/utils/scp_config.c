@@ -22,6 +22,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <tee_api_defines_extensions.h>
+#include <tee/tee_fs.h>
 #include <tee/tee_cryp_utl.h>
 #include <utee_defines.h>
 
@@ -417,6 +418,14 @@ static const char *get_scp03_ksrc_name(enum se050_scp03_ksrc ksrc)
 	return NULL;
 }
 
+#ifndef CFG_RPMB_FS
+static bool plat_rpmb_key_is_ready(void)
+{
+	/* without RPMB lets be cautious */
+	return false;
+}
+#endif
+
 sss_status_t se050_scp03_subkey_derive(struct se050_scp_key *keys)
 {
 	struct {
@@ -429,6 +438,10 @@ sss_status_t se050_scp03_subkey_derive(struct se050_scp_key *keys)
 	};
 	uint8_t msg[SE050_SCP03_KEY_SZ + 3] = { 0 };
 	size_t i = 0;
+
+	/* hack: Foundries.io: our platforms are secured when RPMB is ready */
+	if (!plat_rpmb_key_is_ready())
+		return kStatus_SSS_Fail;
 
 	if (IS_ENABLED(CFG_CORE_SCP03_ONLY)) {
 		memset(msg, 0x55, sizeof(msg));
