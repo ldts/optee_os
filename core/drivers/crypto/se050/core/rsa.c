@@ -31,30 +31,11 @@ static sss_cipher_type_t oefid_cipher_type(void)
 
 static bool oefid_key_supported(size_t bits)
 {
-	switch (se050_get_oefid()) {
-	case SE050F_ID:
-		return bits >= 2048;
-	default:
-		break;
-	}
 	return true;
 }
 
 static bool oefid_op_supported(enum drvcrypt_rsa_id rsa_id)
 {
-	switch (se050_get_oefid()) {
-	case SE050F_ID:
-		switch (rsa_id) {
-		case DRVCRYPT_RSASSA_PKCS_V1_5:
-		case DRVCRYPT_RSASSA_PSS:
-		case DRVCRYPT_RSA_NOPAD:
-			return false;
-		default:
-			break;
-		}
-	default:
-		break;
-	}
 	return true;
 }
 
