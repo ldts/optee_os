@@ -27,6 +27,7 @@
 #include <utee_defines.h>
 
 static enum se050_scp03_ksrc scp03_ksrc;
+static const char *scp03_kname;
 static bool scp03_enabled;
 
 #define SE050A1 0
@@ -392,7 +393,7 @@ static const char *get_scp03_ksrc_name(enum se050_scp03_ksrc ksrc)
 	case SCP03_DERIVED:
 		return "derived";
 	case SCP03_CFG:
-		return "build-int";
+		return "built-in";
 	case SCP03_OFID:
 		return "factory";
 	default:
@@ -452,10 +453,11 @@ bool se050_scp03_enabled(void)
 
 void se050_scp03_set_enable(enum se050_scp03_ksrc ksrc)
 {
+	scp03_kname = get_scp03_ksrc_name(ksrc);
 	scp03_enabled = true;
 	scp03_ksrc = ksrc;
 
-	IMSG("SE05X SCP03 using %s keys", get_scp03_ksrc_name(ksrc));
+	IMSG("SE05X SCP03 using %s keys", scp03_kname);
 }
 
 void se050_scp03_set_disable(void)
