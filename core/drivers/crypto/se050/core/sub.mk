@@ -13,3 +13,4 @@ srcs-$(CFG_NXP_SE05X_RNG_DRV) += rng.c
 srcs-$(CFG_NXP_SE05X_CIPHER_DRV) += cipher.c
 srcs-$(CFG_NXP_SE05X_SCP03_DRV) += scp03.c
 srcs-$(CFG_NXP_SE05X_APDU_DRV) += apdu.c
+srcs-$(CFG_NXP_SE05X_HASH_DRV) += hash.c

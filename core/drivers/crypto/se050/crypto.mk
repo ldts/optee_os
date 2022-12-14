@@ -101,4 +101,10 @@ ifeq ($(CFG_NXP_SE05X_CIPHER_DRV),y)
 $(call force,CFG_CRYPTO_DRV_CIPHER,y,Mandated by CFG_NXP_SE05X_CIPHER_DRV)
 endif
 
+# HASH driver
+CFG_NXP_SE05X_HASH_DRV ?= n
+ifeq ($(CFG_NXP_SE05X_HASH_DRV),y)
+$(call force, CFG_CRYPTO_DRV_HASH,y)
+endif
+
 endif  # CFG_NXP_SE05X
