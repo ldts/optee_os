@@ -728,8 +728,13 @@ static TEE_Result do_verify(struct drvcrypt_sign_data *sdata)
 
 static TEE_Result do_alloc_keypair(struct ecc_keypair *s,
 				   size_t size_bits __unused,
-				   uint32_t type __unused)
+				   uint32_t type)
 {
+	/* This driver only supports ECDH/ECDSA */
+	if (type != TEE_TYPE_ECDSA_KEYPAIR &&
+	    type != TEE_TYPE_ECDH_KEYPAIR)
+		return TEE_ERROR_NOT_IMPLEMENTED;
+
 	memset(s, 0, sizeof(*s));
 	if (!bn_alloc_max(&s->d))
 		goto err;
@@ -747,9 +752,13 @@ err:
 
 static TEE_Result do_alloc_publickey(struct ecc_public_key *s,
 				     size_t size_bits __unused,
-				     uint32_t type __unused)
-
+				     uint32_t type)
 {
+	/* This driver only supports ECDH/ECDSA */
+	if (type != TEE_TYPE_ECDSA_PUBLIC_KEY &&
+	    type != TEE_TYPE_ECDH_PUBLIC_KEY)
+		return TEE_ERROR_NOT_IMPLEMENTED;
+
 	memset(s, 0, sizeof(*s));
 	if (!bn_alloc_max(&s->x))
 		goto err;
@@ -783,6 +792,7 @@ static struct drvcrypt_ecc driver_ecc = {
 
 static TEE_Result ecc_init(void)
 {
+	/* This driver only supports ECDH/ECDSA */
 	pub_ops = crypto_asym_get_ecc_public_ops(TEE_TYPE_ECDSA_PUBLIC_KEY);
 	if (!pub_ops)
 		return TEE_ERROR_GENERIC;
