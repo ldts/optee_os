@@ -142,7 +142,8 @@ static enum caam_ecc_curve get_caam_curve(uint32_t tee_curve)
  * @key        Keypair
  * @size_bits  Key size in bits
  */
-static TEE_Result do_allocate_keypair(struct ecc_keypair *key, size_t size_bits)
+static TEE_Result do_allocate_keypair(struct ecc_keypair *key, size_t size_bits,
+				      uint32_t type __unused)
 {
 	ECC_TRACE("Allocate Keypair of %zu bits", size_bits);
 
@@ -182,7 +183,8 @@ err:
  * @size_bits  Key size in bits
  */
 static TEE_Result do_allocate_publickey(struct ecc_public_key *key,
-					size_t size_bits)
+					size_t size_bits,
+					uint32_t type __unused)
 {
 	ECC_TRACE("Allocate Public Key of %zu bits", size_bits);
 

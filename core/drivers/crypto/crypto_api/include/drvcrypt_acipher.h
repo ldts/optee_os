@@ -149,10 +149,11 @@ struct drvcrypt_ecc_ed {
  */
 struct drvcrypt_ecc {
 	/* Allocates the ECC keypair */
-	TEE_Result (*alloc_keypair)(struct ecc_keypair *key, size_t size_bits);
+	TEE_Result (*alloc_keypair)(struct ecc_keypair *key, size_t size_bits,
+				    uint32_t type);
 	/* Allocates the ECC public key */
 	TEE_Result (*alloc_publickey)(struct ecc_public_key *key,
-				      size_t size_bits);
+				      size_t size_bits, uint32_t type);
 	/* Free ECC public key */
 	void (*free_publickey)(struct ecc_public_key *key);
 	/* Generates the ECC keypair */

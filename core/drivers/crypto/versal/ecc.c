@@ -366,7 +366,8 @@ static TEE_Result do_gen_keypair(struct ecc_keypair *s, size_t size_bits)
 	return keypair_ops->generate(s, size_bits);
 }
 
-static TEE_Result do_alloc_keypair(struct ecc_keypair *s, size_t size_bits)
+static TEE_Result do_alloc_keypair(struct ecc_keypair *s, size_t size_bits,
+				   uint32_t type __unused)
 {
 	TEE_Result ret = TEE_SUCCESS;
 
@@ -380,7 +381,8 @@ static TEE_Result do_alloc_keypair(struct ecc_keypair *s, size_t size_bits)
 	return TEE_SUCCESS;
 }
 
-static TEE_Result do_alloc_publickey(struct ecc_public_key *s, size_t size_bits)
+static TEE_Result do_alloc_publickey(struct ecc_public_key *s, size_t size_bits,
+				     uint32_t type __unused)
 {
 	TEE_Result ret = TEE_SUCCESS;
 
