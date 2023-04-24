@@ -367,9 +367,14 @@ static TEE_Result do_gen_keypair(struct ecc_keypair *s, size_t size_bits)
 }
 
 static TEE_Result do_alloc_keypair(struct ecc_keypair *s, size_t size_bits,
-				   uint32_t type __unused)
+				   uint32_t type)
 {
 	TEE_Result ret = TEE_SUCCESS;
+
+	/* This driver only supports ECDH/ECDSA */
+	if (type != TEE_TYPE_ECDSA_KEYPAIR &&
+	    type != TEE_TYPE_ECDH_KEYPAIR)
+		return TEE_ERROR_NOT_IMPLEMENTED;
 
 	ret = crypto_asym_alloc_ecc_keypair(s, TEE_TYPE_ECDSA_KEYPAIR,
 					    size_bits);
@@ -382,9 +387,14 @@ static TEE_Result do_alloc_keypair(struct ecc_keypair *s, size_t size_bits,
 }
 
 static TEE_Result do_alloc_publickey(struct ecc_public_key *s, size_t size_bits,
-				     uint32_t type __unused)
+				     uint32_t type)
 {
 	TEE_Result ret = TEE_SUCCESS;
+
+	/* This driver only supports ECDH/ECDSA */
+	if (type != TEE_TYPE_ECDSA_PUBLIC_KEY &&
+	    type != TEE_TYPE_ECDH_PUBLIC_KEY)
+		return TEE_ERROR_NOT_IMPLEMENTED;
 
 	ret = crypto_asym_alloc_ecc_public_key(s, TEE_TYPE_ECDSA_PUBLIC_KEY,
 					       size_bits);
@@ -431,6 +441,7 @@ static TEE_Result ecc_init(void)
 		return TEE_ERROR_GENERIC;
 	}
 
+	/* This driver only supports ECDH/ECDSA */
 	keypair_ops = crypto_asym_get_ecc_keypair_ops(TEE_TYPE_ECDSA_KEYPAIR);
 	if (!keypair_ops)
 		return TEE_ERROR_GENERIC;
