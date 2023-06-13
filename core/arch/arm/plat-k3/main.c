@@ -87,3 +87,15 @@ TEE_Result tee_otp_get_hw_unique_key(struct tee_hw_unique_key *hwkey)
 
 	return TEE_SUCCESS;
 }
+
+static TEE_Result main(void)
+{
+	uint32_t swrev = 0;
+
+	if (!ti_sci_get_swrev(&swrev))
+		IMSG("Secure Software: Rev %d", swrev);
+
+	return TEE_SUCCESS;
+}
+
+boot_final(main);
