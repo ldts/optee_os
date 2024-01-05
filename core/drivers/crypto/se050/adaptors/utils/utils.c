@@ -117,19 +117,20 @@ sss_status_t se050_oid_from_key(struct bignum **p, uint32_t *oid)
 {
 	char label[12] = { '\0' };
 
-	if (!*p || !oid) {
-		*oid = 0;
+	if (!oid)
 		return kStatus_SSS_Success;
-	}
+
+	/* assume it is not an SE_ request */
+	*oid = 0;
+
+	if (!*p)
+		return kStatus_SSS_Success;
 
 	/* label is 11 bytes guaranteed by PKCS#11 TA */
 	memcpy(label, *p, 11);
 
-	if (memcmp(label, "SE_", 3)) {
-		/* not an SE_ request */
-		*oid = 0;
+	if (memcmp(label, "SE_", 3))
 		return kStatus_SSS_Success;
-	}
 
 	free(*p);
 
