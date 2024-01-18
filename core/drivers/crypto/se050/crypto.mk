@@ -90,10 +90,6 @@ endif
 # - ECC
 ifeq ($(CFG_NXP_SE05X_ECC_DRV),y)
 $(call force,CFG_CRYPTO_DRV_ECC,y)
-# Disable SM2 as it is not supported by the driver
-$(call force,CFG_CRYPTO_SM2_PKE,n)
-$(call force,CFG_CRYPTO_SM2_KEP,n)
-$(call force,CFG_CRYPTO_SM2_DSA,n)
 endif
 
 # Symmetric ciphers
