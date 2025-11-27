@@ -28,6 +28,14 @@ register_ddr(DRAM1_BASE, DRAM1_SIZE);
 
 static struct qcom_geni_uart_data console_data;
 
+static TEE_Result plat_console_deinit(void)
+{
+	register_serial_console(NULL);
+	return TEE_SUCCESS;
+
+}
+boot_final(plat_console_deinit);
+
 void plat_console_init(void)
 {
 	qcom_geni_uart_init(&console_data, GENI_UART_REG_BASE);
