@@ -19,6 +19,7 @@
 #define DRAM1_SIZE			ULL(0x100000000)
 
 #define GENI_UART_REG_BASE		UL(0x994000)
+#define RAMBLUR_PIMEM_REG_BASE		UL(0x00610000)
 
 /* GIC related constants */
 #define GICD_BASE			UL(0x17a00000)

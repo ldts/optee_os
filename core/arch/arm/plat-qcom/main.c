@@ -7,6 +7,7 @@
 #include <console.h>
 #include <drivers/gic.h>
 #include <drivers/qcom_geni_uart.h>
+#include <drivers/qti/ramblur/ramblur_pimem.h>
 #include <io.h>
 #include <kernel/boot.h>
 #include <platform_config.h>
@@ -41,6 +42,17 @@ void plat_console_init(void)
 	qcom_geni_uart_init(&console_data, GENI_UART_REG_BASE);
 	register_serial_console(&console_data.chip);
 }
+
+static TEE_Result platform_banner(void)
+{
+	uint32_t major = 0, minor = 0, step = 0;
+
+	qti_ramblur_pimem_get_version(&major, &minor, &step);
+	IMSG("RAMBLUR %d.%d.%d", major, minor, step);
+
+	return TEE_SUCCESS;
+}
+service_init(platform_banner);
 
 void boot_primary_init_intc(void)
 {
