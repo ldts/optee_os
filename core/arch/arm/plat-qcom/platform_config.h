@@ -30,6 +30,10 @@
 /* GIC related constants */
 #define GICD_BASE			UL(0x17a00000)
 #define GICR_BASE			UL(0x17a60000)
+
+#define GCC_BASE			UL(0x100000)
+#define WPSS_BASE			UL(0x8a00000)
+#define PAS_ID_WPSS			0x6
 #endif
 
 #endif /*PLATFORM_CONFIG_H*/

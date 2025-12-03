@@ -12,8 +12,6 @@ $(call force,CFG_CORE_LARGE_PHYS_ADDR,y)
 $(call force,CFG_CORE_RESERVED_SHM,n)
 $(call force,CFG_QCOM_GENI_UART,y)
 
-CFG_QCOM_PAS_PTA ?= y
-
 ta-targets = ta_arm64
 supported-ta-targets ?= ta_arm64
 
@@ -32,4 +30,8 @@ CFG_TEE_RAM_VA_SIZE ?= 0x200000
 CFG_TA_RAM_VA_SIZE ?= 0x1c00000
 CFG_TZDRAM_SIZE  ?= (CFG_TEE_RAM_VA_SIZE + CFG_TA_RAM_VA_SIZE)
 CFG_NUM_THREADS  ?= 8
+
+CFG_DRIVERS_CLK ?= y
+CFG_DRIVERS_QCOM_CLK ?= y
+CFG_QCOM_PAS_PTA ?= y
 endif

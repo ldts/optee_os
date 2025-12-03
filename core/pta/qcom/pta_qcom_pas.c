@@ -6,84 +6,120 @@
 #include <initcall.h>
 #include <kernel/pseudo_ta.h>
 #include <kernel/user_ta.h>
+#include <platform_config.h>
 #include <pta_qcom_pas.h>
 #include <string.h>
 
+#include "q6dsp.h"
+
 #define PTA_NAME	"pta.qcom.pas"
+
+static struct qcom_q6dsp_data wpss_dsp_data = {
+	.pas_id = PAS_ID_WPSS,
+	.base.pa = WPSS_BASE,
+	.clk_group = QCOM_CLKS_WPSS,
+};
 
 static TEE_Result qcom_pas_is_supported(uint32_t pt,
 				        TEE_Param params[TEE_NUM_PARAMS] __unused)
 {
-	const uint32_t exp_pt = TEE_PARAM_TYPES(TEE_PARAM_TYPE_NONE,
+	const uint32_t exp_pt = TEE_PARAM_TYPES(TEE_PARAM_TYPE_VALUE_INPUT,
 						TEE_PARAM_TYPE_NONE,
 						TEE_PARAM_TYPE_NONE,
 						TEE_PARAM_TYPE_NONE);
 
-	IMSG("Invoked qcom_pas_is_supported");
+	DMSG("Invoked qcom_pas_is_supported");
 
 	if (pt != exp_pt)
 		return TEE_ERROR_BAD_PARAMETERS;
 
-	return TEE_ERROR_NOT_IMPLEMENTED;
+	if (params[0].value.a != wpss_dsp_data.pas_id)
+		return TEE_ERROR_NOT_SUPPORTED;
+
+	return TEE_SUCCESS;
 }
 
 static TEE_Result qcom_pas_init_image(uint32_t pt,
 				      TEE_Param params[TEE_NUM_PARAMS] __unused)
 {
-	const uint32_t exp_pt = TEE_PARAM_TYPES(TEE_PARAM_TYPE_NONE,
-						TEE_PARAM_TYPE_NONE,
+	const uint32_t exp_pt = TEE_PARAM_TYPES(TEE_PARAM_TYPE_VALUE_INPUT,
+						TEE_PARAM_TYPE_MEMREF_INPUT,
 						TEE_PARAM_TYPE_NONE,
 						TEE_PARAM_TYPE_NONE);
 
-	IMSG("Invoked qcom_pas_init_image");
+	DMSG("Invoked qcom_pas_init_image");
 
 	if (pt != exp_pt)
 		return TEE_ERROR_BAD_PARAMETERS;
 
-	return TEE_ERROR_NOT_IMPLEMENTED;
+	if (params[0].value.a != wpss_dsp_data.pas_id)
+		return TEE_ERROR_NOT_SUPPORTED;
+
+	return TEE_SUCCESS;
 }
 
 static TEE_Result qcom_pas_mem_setup(uint32_t pt,
 				     TEE_Param params[TEE_NUM_PARAMS] __unused)
 {
-	const uint32_t exp_pt = TEE_PARAM_TYPES(TEE_PARAM_TYPE_NONE,
+	const uint32_t exp_pt = TEE_PARAM_TYPES(TEE_PARAM_TYPE_VALUE_INPUT,
 						TEE_PARAM_TYPE_NONE,
 						TEE_PARAM_TYPE_NONE,
 						TEE_PARAM_TYPE_NONE);
 
-	IMSG("Invoked qcom_pas_mem_setup");
+	DMSG("Invoked qcom_pas_mem_setup");
 
 	if (pt != exp_pt)
 		return TEE_ERROR_BAD_PARAMETERS;
 
-	return TEE_ERROR_NOT_IMPLEMENTED;
+	if (params[0].value.a != wpss_dsp_data.pas_id)
+		return TEE_ERROR_NOT_SUPPORTED;
+
+	wpss_dsp_data.firmware_base = params[0].value.b;
+
+	return TEE_SUCCESS;
 }
 
 static TEE_Result qcom_pas_auth_and_reset(uint32_t pt,
 					  TEE_Param params[TEE_NUM_PARAMS] __unused)
 {
-	const uint32_t exp_pt = TEE_PARAM_TYPES(TEE_PARAM_TYPE_NONE,
+	const uint32_t exp_pt = TEE_PARAM_TYPES(TEE_PARAM_TYPE_VALUE_INPUT,
 						TEE_PARAM_TYPE_NONE,
 						TEE_PARAM_TYPE_NONE,
 						TEE_PARAM_TYPE_NONE);
+	TEE_Result res = TEE_SUCCESS;
 
-	IMSG("Invoked qcom_pas_auth_and_reset");
+	DMSG("Invoked qcom_pas_auth_and_reset");
 
 	if (pt != exp_pt)
 		return TEE_ERROR_BAD_PARAMETERS;
 
-	return TEE_ERROR_NOT_IMPLEMENTED;
+	if (params[0].value.a != wpss_dsp_data.pas_id)
+		return TEE_ERROR_NOT_SUPPORTED;
+
+	if (!wpss_dsp_data.firmware_base)
+		return TEE_ERROR_NO_DATA;
+
+	res = qcom_clock_enable(wpss_dsp_data.clk_group);
+	if (res != TEE_SUCCESS) {
+		EMSG("Failed to enable clocks: %d", res);
+		return res;
+	}
+
+	wpss_dsp_start(&wpss_dsp_data);
+	DMSG("WPSS DSP start done!\n");
+
+	return res;
 }
 
 static TEE_Result qcom_pas_shutdown(uint32_t pt,
 				    TEE_Param params[TEE_NUM_PARAMS] __unused)
 {
-	const uint32_t exp_pt = TEE_PARAM_TYPES(TEE_PARAM_TYPE_NONE,
+	const uint32_t exp_pt = TEE_PARAM_TYPES(TEE_PARAM_TYPE_VALUE_INPUT,
 						TEE_PARAM_TYPE_NONE,
 						TEE_PARAM_TYPE_NONE,
 						TEE_PARAM_TYPE_NONE);
 
-	IMSG("Invoked qcom_pas_shutdown");
+	DMSG("Invoked qcom_pas_shutdown");
 
 	if (pt != exp_pt)
 		return TEE_ERROR_BAD_PARAMETERS;
