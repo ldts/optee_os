@@ -6,3 +6,7 @@
 
 incdirs-$(CFG_QCOM_RAMBLUR_PIMEM_V3) += ../../include/drivers/qcom/ramblur/v3/
 srcs-$(CFG_QCOM_RAMBLUR_PIMEM_V3) += ramblur/ramblur_pimem_v3.c
+
+incdirs-$(CFG_QCOM_SMEM) += ../../include/drivers/qcom/smem/
+srcs-$(CFG_QCOM_SMEM) += smem/smem.c
+
