@@ -10,3 +10,6 @@ srcs-$(CFG_QCOM_RAMBLUR_PIMEM_V3) += ramblur/ramblur_pimem_v3.c
 incdirs-$(CFG_QCOM_SMEM) += ../../include/drivers/qcom/smem/
 srcs-$(CFG_QCOM_SMEM) += smem/smem.c
 
+incdirs-$(CFG_QCOM_SOCINFO) += ../../include/drivers/qcom/socinfo/
+srcs-$(CFG_QCOM_SOCINFO) += socinfo/socinfo.c
+
