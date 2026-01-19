@@ -11,6 +11,7 @@
 #include <string.h>
 
 #include "q6dsp.h"
+#include "venus.h"
 
 #define PTA_NAME	"pta.qcom.pas"
 
@@ -20,20 +21,24 @@ static struct qcom_q6dsp_data wpss_dsp_data = {
 	.clk_group = QCOM_CLKS_WPSS,
 };
 
+static struct qcom_venus_data venus_fw_data = {
+	.base.pa = IRIS_BASE,
+	.size = IRIS_SIZE,
+};
+
 static TEE_Result qcom_pas_is_supported(uint32_t pt,
-				        TEE_Param params[TEE_NUM_PARAMS] __unused)
+				TEE_Param params[TEE_NUM_PARAMS] __unused)
 {
 	const uint32_t exp_pt = TEE_PARAM_TYPES(TEE_PARAM_TYPE_VALUE_INPUT,
 						TEE_PARAM_TYPE_NONE,
 						TEE_PARAM_TYPE_NONE,
 						TEE_PARAM_TYPE_NONE);
 
-	DMSG("Invoked qcom_pas_is_supported");
-
 	if (pt != exp_pt)
 		return TEE_ERROR_BAD_PARAMETERS;
 
-	if (params[0].value.a != wpss_dsp_data.pas_id)
+	if (params[0].value.a != PAS_ID_WPSS &&
+	    params[0].value.a != PAS_ID_VENUS)
 		return TEE_ERROR_NOT_SUPPORTED;
 
 	return TEE_SUCCESS;
@@ -47,40 +52,44 @@ static TEE_Result qcom_pas_init_image(uint32_t pt,
 						TEE_PARAM_TYPE_NONE,
 						TEE_PARAM_TYPE_NONE);
 
-	DMSG("Invoked qcom_pas_init_image");
-
 	if (pt != exp_pt)
 		return TEE_ERROR_BAD_PARAMETERS;
 
-	if (params[0].value.a != wpss_dsp_data.pas_id)
-		return TEE_ERROR_NOT_SUPPORTED;
+	if (params[0].value.a == PAS_ID_WPSS ||
+	    params[0].value.a == PAS_ID_VENUS)
+		return TEE_SUCCESS;
 
-	return TEE_SUCCESS;
+	return TEE_ERROR_NOT_SUPPORTED;
 }
 
 static TEE_Result qcom_pas_mem_setup(uint32_t pt,
-				     TEE_Param params[TEE_NUM_PARAMS] __unused)
+				     TEE_Param params[TEE_NUM_PARAMS]__unused)
 {
 	const uint32_t exp_pt = TEE_PARAM_TYPES(TEE_PARAM_TYPE_VALUE_INPUT,
-						TEE_PARAM_TYPE_NONE,
+						TEE_PARAM_TYPE_VALUE_INPUT,
 						TEE_PARAM_TYPE_NONE,
 						TEE_PARAM_TYPE_NONE);
-
-	DMSG("Invoked qcom_pas_mem_setup");
 
 	if (pt != exp_pt)
 		return TEE_ERROR_BAD_PARAMETERS;
 
-	if (params[0].value.a != wpss_dsp_data.pas_id)
+	switch (params[0].value.a) {
+	case PAS_ID_WPSS:
+		wpss_dsp_data.firmware_base = params[0].value.b;
+		break;
+	case PAS_ID_VENUS:
+		venus_fw_data.fw_base = params[1].value.a;
+		venus_fw_data.fw_size = params[1].value.b;
+		break;
+	default:
 		return TEE_ERROR_NOT_SUPPORTED;
-
-	wpss_dsp_data.firmware_base = params[0].value.b;
+	}
 
 	return TEE_SUCCESS;
 }
 
 static TEE_Result qcom_pas_auth_and_reset(uint32_t pt,
-					  TEE_Param params[TEE_NUM_PARAMS] __unused)
+					  TEE_Param params[TEE_NUM_PARAMS]__unused)
 {
 	const uint32_t exp_pt = TEE_PARAM_TYPES(TEE_PARAM_TYPE_VALUE_INPUT,
 						TEE_PARAM_TYPE_NONE,
@@ -88,27 +97,34 @@ static TEE_Result qcom_pas_auth_and_reset(uint32_t pt,
 						TEE_PARAM_TYPE_NONE);
 	TEE_Result res = TEE_SUCCESS;
 
-	DMSG("Invoked qcom_pas_auth_and_reset");
-
 	if (pt != exp_pt)
 		return TEE_ERROR_BAD_PARAMETERS;
 
-	if (params[0].value.a != wpss_dsp_data.pas_id)
+	switch (params[0].value.a) {
+	case PAS_ID_WPSS:
+		if (!wpss_dsp_data.firmware_base)
+			return TEE_ERROR_NO_DATA;
+
+		res = qcom_clock_enable(wpss_dsp_data.clk_group);
+		if (res != TEE_SUCCESS) {
+			EMSG("Failed to enable clocks: %d", res);
+			return res;
+		}
+
+		wpss_dsp_start(&wpss_dsp_data);
+		break;
+	case PAS_ID_VENUS:
+		if (!venus_fw_data.fw_base)
+			return TEE_ERROR_NO_DATA;
+
+		venus_fw_start(&venus_fw_data);
+		break;
+	default:
 		return TEE_ERROR_NOT_SUPPORTED;
 
-	if (!wpss_dsp_data.firmware_base)
-		return TEE_ERROR_NO_DATA;
-
-	res = qcom_clock_enable(wpss_dsp_data.clk_group);
-	if (res != TEE_SUCCESS) {
-		EMSG("Failed to enable clocks: %d", res);
-		return res;
 	}
 
-	wpss_dsp_start(&wpss_dsp_data);
-	DMSG("WPSS DSP start done!\n");
-
-	return res;
+	return TEE_SUCCESS;
 }
 
 static TEE_Result qcom_pas_shutdown(uint32_t pt,
@@ -118,11 +134,14 @@ static TEE_Result qcom_pas_shutdown(uint32_t pt,
 						TEE_PARAM_TYPE_NONE,
 						TEE_PARAM_TYPE_NONE,
 						TEE_PARAM_TYPE_NONE);
-
-	DMSG("Invoked qcom_pas_shutdown");
-
 	if (pt != exp_pt)
 		return TEE_ERROR_BAD_PARAMETERS;
+
+	if (params[0].value.a == PAS_ID_VENUS) {
+		venus_fw_shutdown(&venus_fw_data);
+
+		return TEE_SUCCESS;
+	}
 
 	return TEE_ERROR_NOT_IMPLEMENTED;
 }

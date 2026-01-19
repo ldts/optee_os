@@ -24,6 +24,9 @@
 #define SMEM_BASE			ULL(0x80900000)
 #define SMEM_SIZE			ULL(0x200000)
 
+#define IRIS_BASE			UL(0x0aa00000)
+#define IRIS_SIZE			ULL(0x00200000)
+
 #define GENI_UART_REG_BASE		UL(0x994000)
 #define RAMBLUR_PIMEM_REG_BASE		UL(0x610000)
 
@@ -34,6 +37,7 @@
 #define GCC_BASE			UL(0x100000)
 #define WPSS_BASE			UL(0x8a00000)
 #define PAS_ID_WPSS			0x6
+#define PAS_ID_VENUS			9
 #endif
 
 #endif /*PLATFORM_CONFIG_H*/
