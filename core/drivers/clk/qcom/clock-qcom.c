@@ -38,11 +38,16 @@ static TEE_Result clk_enable_cbc(paddr_t cbcr)
 #define GCC_WPSS_AHB_CLK 0x9d154
 #define GCC_WPSS_AHB_BDG_MST_CLK 0x9d158
 #define GCC_WPSS_RSCP_CLK 0x9d16c
+#define GCC_CFG_NOC_LPASS_CLK 0x47020
+#define TOP_CC_LPI_Q6_AXIM_HS_CLK 0x4000
+#define TOP_CC_AGGNOC_MPU_LS_CBCR_CLK 0x7000
 
 TEE_Result qcom_clock_enable(enum qcom_clk_group group)
 {
-	struct io_pa_va base = { .pa = GCC_BASE };
-	vaddr_t gcc_base = io_pa_or_va(&base, 0x100000);
+	struct io_pa_va gdsc_io = { .pa = LPASS_BASE + 0x01000000 };
+	struct io_pa_va gcc_io = { .pa = GCC_BASE };
+	vaddr_t gdsc_base = io_pa_or_va(&gdsc_io, 0xc000);
+	vaddr_t gcc_base = io_pa_or_va(&gcc_io, 0x100000);
 	TEE_Result res;
 
 	switch (group) {
@@ -56,6 +61,18 @@ TEE_Result qcom_clock_enable(enum qcom_clk_group group)
 		res = clk_enable_cbc(gcc_base + GCC_WPSS_RSCP_CLK);
 		if (res)
 			return res;
+		break;
+	case QCOM_CLKS_LPASS:
+		res = clk_enable_cbc(gdsc_base + TOP_CC_AGGNOC_MPU_LS_CBCR_CLK);
+		if (res)
+			return res;
+		res = clk_enable_cbc(gcc_base + GCC_CFG_NOC_LPASS_CLK);
+		if (res)
+			return res;
+		res = clk_enable_cbc(gdsc_base + TOP_CC_LPI_Q6_AXIM_HS_CLK);
+		if (res)
+			return res;
+
 		break;
 	default:
 		EMSG("Unsupported clock group %d\n", group);

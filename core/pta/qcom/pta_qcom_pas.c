@@ -12,6 +12,7 @@
 
 #include "q6dsp.h"
 #include "venus.h"
+#include "lpass.h"
 
 #define PTA_NAME	"pta.qcom.pas"
 
@@ -26,6 +27,12 @@ static struct qcom_venus_data venus_fw_data = {
 	.size = IRIS_SIZE,
 };
 
+static struct qcom_lpass_data lpass_data = {
+	.base.pa = LPASS_BASE,
+	.size = LPASS_SIZE,
+	.clk_group = QCOM_CLKS_LPASS,
+};
+
 static TEE_Result qcom_pas_is_supported(uint32_t pt,
 				TEE_Param params[TEE_NUM_PARAMS] __unused)
 {
@@ -38,7 +45,8 @@ static TEE_Result qcom_pas_is_supported(uint32_t pt,
 		return TEE_ERROR_BAD_PARAMETERS;
 
 	if (params[0].value.a != PAS_ID_WPSS &&
-	    params[0].value.a != PAS_ID_VENUS)
+	    params[0].value.a != PAS_ID_VENUS &&
+	    params[0].value.a != PAS_ID_QDSP6)
 		return TEE_ERROR_NOT_SUPPORTED;
 
 	return TEE_SUCCESS;
@@ -56,7 +64,8 @@ static TEE_Result qcom_pas_init_image(uint32_t pt,
 		return TEE_ERROR_BAD_PARAMETERS;
 
 	if (params[0].value.a == PAS_ID_WPSS ||
-	    params[0].value.a == PAS_ID_VENUS)
+	    params[0].value.a == PAS_ID_VENUS ||
+	    params[0].value.a == PAS_ID_QDSP6)
 		return TEE_SUCCESS;
 
 	return TEE_ERROR_NOT_SUPPORTED;
@@ -80,6 +89,10 @@ static TEE_Result qcom_pas_mem_setup(uint32_t pt,
 	case PAS_ID_VENUS:
 		venus_fw_data.fw_base = params[1].value.a;
 		venus_fw_data.fw_size = params[1].value.b;
+		break;
+	case PAS_ID_QDSP6:
+		lpass_data.fw_base = params[1].value.a;
+		lpass_data.fw_size = params[1].value.b;
 		break;
 	default:
 		return TEE_ERROR_NOT_SUPPORTED;
@@ -119,6 +132,18 @@ static TEE_Result qcom_pas_auth_and_reset(uint32_t pt,
 
 		venus_fw_start(&venus_fw_data);
 		break;
+	case PAS_ID_QDSP6:
+		if (!lpass_data.fw_base)
+			return TEE_ERROR_NO_DATA;
+
+		res = qcom_clock_enable(lpass_data.clk_group);
+		if (res != TEE_SUCCESS) {
+			EMSG("Failed to enable clocks: %d", res);
+			return res;
+		}
+
+		lpass_start(&lpass_data);
+		break;
 	default:
 		return TEE_ERROR_NOT_SUPPORTED;
 
@@ -134,16 +159,25 @@ static TEE_Result qcom_pas_shutdown(uint32_t pt,
 						TEE_PARAM_TYPE_NONE,
 						TEE_PARAM_TYPE_NONE,
 						TEE_PARAM_TYPE_NONE);
+	TEE_Result ret = TEE_ERROR_NOT_IMPLEMENTED;
+
 	if (pt != exp_pt)
 		return TEE_ERROR_BAD_PARAMETERS;
 
-	if (params[0].value.a == PAS_ID_VENUS) {
+	switch (params[0].value.a) {
+	case PAS_ID_VENUS:
 		venus_fw_shutdown(&venus_fw_data);
-
-		return TEE_SUCCESS;
+		ret = TEE_SUCCESS;
+		break;
+	case PAS_ID_QDSP6:
+		lpass_shutdown(&lpass_data);
+		ret = TEE_SUCCESS;
+		break;
+	default:
+		ret = TEE_ERROR_NOT_IMPLEMENTED;
 	}
 
-	return TEE_ERROR_NOT_IMPLEMENTED;
+	return ret;
 }
 
 static TEE_Result pta_qcom_pas_invoke_command(void *session __unused,

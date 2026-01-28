@@ -26,6 +26,8 @@
 
 #define IRIS_BASE			UL(0x0aa00000)
 #define IRIS_SIZE			ULL(0x00200000)
+#define LPASS_BASE			UL(0x02c00000)
+#define LPASS_SIZE			ULL(0x01080000)
 
 #define GENI_UART_REG_BASE		UL(0x994000)
 #define RAMBLUR_PIMEM_REG_BASE		UL(0x610000)
@@ -38,6 +40,7 @@
 #define WPSS_BASE			UL(0x8a00000)
 #define PAS_ID_WPSS			0x6
 #define PAS_ID_VENUS			9
+#define PAS_ID_QDSP6			1
 #endif
 
 #endif /*PLATFORM_CONFIG_H*/

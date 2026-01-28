@@ -11,6 +11,7 @@
 
 enum qcom_clk_group {
 	QCOM_CLKS_WPSS,
+	QCOM_CLKS_LPASS,
 
 	QCOM_CLKS_MAX,
 };
