@@ -40,13 +40,14 @@ static TEE_Result cdsp0_enable(void)
 
 	io_clrbits32(cc_base + TURINGNSP_0_Q6SS_ALT_RESET_CTL,
 		     CBCR_BRANCH_ENABLE_BIT);
-	io_clrbits32(cc_base + TURINGNSP_0_Q6SS_AHBS_AON,
+	io_clrbits32(cc_base + TURINGNSP_0_Q6SS_ALT_RESET_AON,
 		     CBCR_BRANCH_ENABLE_BIT);
+
 	io_setbits32(cc_base + TURINGNSP_0_NSPNOC,
 		     CBCR_BRANCH_ENABLE_BIT);
 
+	/* Retention flop */
 	io_clrbits32(cc_base + TURINGNSP_0_VAPSS_GDSCR, 0x1);
-
 	while (!timeout_elapsed(timeout)) {
 		if (io_read32(cc_base + TURINGNSP_0_VAPSS_GDSCR) & 0x80000000)
 			goto out;
@@ -63,20 +64,18 @@ out:
 
 TEE_Result qcom_clock_enable_pas(enum qcom_clk_group group)
 {
-#if 0
 	struct io_pa_va base = { .pa = GCC_BASE };
 	vaddr_t gcc_base = io_pa_or_va(&base, GCC_SIZE);
-#endif
 	TEE_Result res = 0;
 
 	switch (group) {
 	case QCOM_CLKS_TURING:
-#if 0
+		/* Turing bus clock branch connected to the NIU socket */
 		res = qcom_clock_enable_cbc(gcc_base +
 					    GCC_TURING_0_CFG_AHB_CLK);
 		if (res)
 			goto timeout;
-#endif
+
 		res = cdsp0_enable();
 		if (res != TEE_SUCCESS)
 			goto timeout;
@@ -87,6 +86,6 @@ TEE_Result qcom_clock_enable_pas(enum qcom_clk_group group)
 
 	return TEE_SUCCESS;
 timeout:
-	EMSG("Timeout trying to enable clock group %d\n", group);
+	EMSG("Timeout trying to enableyeyeah clock group %d\n", group);
 	return TEE_ERROR_TIMEOUT;
 }

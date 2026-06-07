@@ -12,6 +12,8 @@
 
 #define TURING_NSPAUX_XO_CBCR 		0x02008040
 #define TURING_Q6SS_Q6_AXIM_CBCR	0x02008404
+#define TURING_Q6SS_AXIS2_CBCR		0x0200840c
+
 #define TURING_QDSP6SS_CORE_CBCR	0x02348040
 
 #define TURING_QDSP6SS_RST_EVB		0x02300010
@@ -188,57 +190,61 @@ TEE_Result cdsp0_fw_start(void)
 	vaddr_t base = io_pa_or_va(&data->base, data->size);
 	uint64_t timeout = timeout_init_us(BOOT_FSM_TIMEOUT);
 
-	io_setbits32(base + TURING_QDSP6SS_CORE_CBCR, CBCR_BRANCH_ENABLE_BIT);
-	io_setbits32(base + TURING_Q6SS_Q6_AXIM_CBCR, CBCR_HW_CTL_ENABLE_BIT);
-	io_setbits32(base + TURING_NSPAUX_XO_CBCR, CBCR_BRANCH_ENABLE_BIT);
+	/* QDSPV73SS out of reset sequence */
+       io_setbits32(base + TURING_QDSP6SS_CORE_CBCR, CBCR_BRANCH_ENABLE_BIT);
+       io_setbits32(base + TURING_Q6SS_Q6_AXIM_CBCR, CBCR_HW_CTL_ENABLE_BIT);
+       io_setbits32(base + TURING_Q6SS_AXIS2_CBCR, CBCR_HW_CTL_ENABLE_BIT);
+       io_setbits32(base + TURING_NSPAUX_XO_CBCR, CBCR_BRANCH_ENABLE_BIT);
 
-	io_write32(base + TURING_QDSP6SS_RST_EVB, data->fw_base >> 4);
-	dsb();
+       /* Program firmware */
+       io_write32(base + TURING_QDSP6SS_RST_EVB, data->fw_base >> 4);
+       dsb();
 
-	io_setbits32(base + TURING_QDSP6SS_BOOT_START, 0x1);
-	io_write32(base + TURING_QDSP6SS_BOOT_CMD, 0x1);
+       /* Boot */
+       io_setbits32(base + TURING_QDSP6SS_BOOT_START, 0x1);
+       io_write32(base + TURING_QDSP6SS_BOOT_CMD, 0x1);
 
-	while (!timeout_elapsed(timeout)) {
-		if (io_read32(base + TURING_QDSP6SS_BOOT_STATUS) & BIT(0))
-			return TEE_SUCCESS;
+       while (!timeout_elapsed(timeout)) {
+	       if (io_read32(base + TURING_QDSP6SS_BOOT_STATUS) & BIT(0))
+		       return TEE_SUCCESS;
 
-		udelay(10);
-	}
+	       udelay(10);
+       }
 
-	return TEE_ERROR_TIMEOUT;
+       return TEE_ERROR_TIMEOUT;
 }
 
 TEE_Result cdsp0_fw_shutdown(void)
 {
-	return TEE_ERROR_NOT_IMPLEMENTED;
+       return TEE_ERROR_NOT_IMPLEMENTED;
 }
 
 TEE_Result cdsp0_get_resource_table(struct resource_table *rt,
-				      size_t *rt_size)
+				     size_t *rt_size)
 {
-	const struct fw_rsc_hdr header = {
-		.type = RSC_DEVMEM,
-	};
-	static struct resource_table table = {
-		.ver = 1,
-		.num = TURING_NUM_MEM_RESOURCES,
-		.offset[TURING_NUM_MEM_RESOURCES - 1] = 0,
-	};
+       const struct fw_rsc_hdr header = {
+	       .type = RSC_DEVMEM,
+       };
+       static struct resource_table table = {
+	       .ver = 1,
+	       .num = TURING_NUM_MEM_RESOURCES,
+	       .offset[TURING_NUM_MEM_RESOURCES - 1] = 0,
+       };
 
-	return get_mem_rsc(rt, rt_size, &table, &header,
-			   turing_mem_res,
-			   TURING_RESOURCE_TABLE_HEADER_SIZE,
-			   TURING_RESOURCE_TABLE_SIZE);
+       return get_mem_rsc(rt, rt_size, &table, &header,
+			  turing_mem_res,
+			  TURING_RESOURCE_TABLE_HEADER_SIZE,
+			  TURING_RESOURCE_TABLE_SIZE);
 }
 
 struct qcom_pas_data *cdsp0_get_pas_data(void)
 {
-	static struct qcom_pas_data pas_data = {
-		.clk_group = QCOM_CLKS_TURING,
-		.pas_id = PAS_ID_TURING,
-		.base.pa = TURING_0_BASE,
-		.size = TURING_0_SIZE,
-	};
+       static struct qcom_pas_data pas_data = {
+	       .clk_group = QCOM_CLKS_TURING,
+	       .pas_id = PAS_ID_TURING,
+	       .base.pa = TURING_0_BASE,
+	       .size = TURING_0_SIZE,
+       };
 
-	return &pas_data;
+       return &pas_data;
 }
