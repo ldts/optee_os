@@ -181,6 +181,12 @@ static const struct fw_rsc_devmem turing_mem_res[] = {
 		.da = 0x2304e000, .pa = 0x2304e000, .len = 0x2000, },
 	{ .name = "nsp_7806", .flags = IOMMU_READ,
 		.da = 0x90860000, .pa = 0x90860000, .len = 0x20000, },
+	/* SMEM (smem@90900000, 2 MB) holds the GLINK FIFOs the DSP must
+	 * read/write to talk to the apps processor. Without this mapping the
+	 * DSP takes a translation fault on its first SMEM access (e.g. iova
+	 * 0x90aff330) -> mmufault/watchdog and never reaches running. */
+	{ .name = "smem", .flags = IOMMU_READ | IOMMU_WRITE,
+		.da = 0x90900000, .pa = 0x90900000, .len = 0x200000, },
 };
 
 DEFINE_RESOURCE_TABLE(TURING, ARRAY_SIZE(turing_mem_res));
