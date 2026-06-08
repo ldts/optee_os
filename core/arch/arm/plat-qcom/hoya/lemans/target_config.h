@@ -26,4 +26,13 @@
 #define IMEM_BASE			UL(0x14680000)
 #define IMEM_SIZE			UL(0x32000)
 
+#define TURING_0_BASE			UL(0x24000000)
+#define TURING_0_SIZE			UL(0x03000000)
+
+#define TURING_1_BASE			UL(0x28000000)
+#define TURING_1_SIZE			UL(0x03000000)
+
+#define PAS_ID_TURING			18
+#define PAS_ID_TURING1			30
+
 #endif /* TARGET_CONFIG_H */
