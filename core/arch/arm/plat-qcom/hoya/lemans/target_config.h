@@ -35,4 +35,14 @@
 #define PAS_ID_TURING			18
 #define PAS_ID_TURING1			30
 
+/*
+ * CDSP (CDSP0 / TURING) content-protection shared channel in the static TZ DDR
+ * region. TZ zeroes this on CDSP0 bring-up (ACResetSharedChannel,
+ * AC_VM_CP_CDSP); there is no equivalent CDSP1 channel. Address mirrors the TZ
+ * DDR layout: TZBSP_EBI1_SECCHANNEL_CDSP (TZ_TZ_STAT_BASE_ADDR 0xDB100000 +
+ * 0xc0000 + TZBSP_TZ_DDR_SECCHANNEL_SIZE 0x1c000), size 0x2000.
+ */
+#define CDSP_SECCHANNEL_BASE		UL(0xdb1dc000)
+#define CDSP_SECCHANNEL_SIZE		UL(0x2000)
+
 #endif /* TARGET_CONFIG_H */

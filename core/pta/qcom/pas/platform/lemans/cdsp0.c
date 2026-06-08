@@ -4,9 +4,13 @@
  */
 
 #include <io.h>
+#include <mm/core_memprot.h>
+#include <mm/core_mmu.h>
+#include <platform_config.h>
 #include <resource_table.h>
 #include <stdint.h>
 #include <string.h>
+#include <trace.h>
 
 #include "cdsp0.h"
 
@@ -183,11 +187,44 @@ DEFINE_RESOURCE_TABLE(TURING, ARRAY_SIZE(turing_mem_res));
 
 #define BOOT_FSM_TIMEOUT	10000
 
+/*
+ * Clear the CDSP content-protection shared channel before starting the DSP.
+ * TZ does this on CDSP0 bring-up only (ACResetSharedChannel, AC_VM_CP_CDSP);
+ * there is no equivalent CDSP1 channel. Leaving stale contents here prevents
+ * the host from communicating with CDSP0 even though the core boots.
+ */
+static TEE_Result cdsp0_reset_shared_channel(void)
+{
+	void *va = core_mmu_add_mapping(MEM_AREA_RAM_SEC,
+					CDSP_SECCHANNEL_BASE,
+					CDSP_SECCHANNEL_SIZE);
+
+	if (!va) {
+		EMSG("Failed to map CDSP shared channel");
+		return TEE_ERROR_GENERIC;
+	}
+
+	memset(va, 0, CDSP_SECCHANNEL_SIZE);
+
+	if (core_mmu_remove_mapping(MEM_AREA_RAM_SEC, va,
+				    CDSP_SECCHANNEL_SIZE)) {
+		EMSG("Failed to unmap CDSP shared channel");
+		return TEE_ERROR_GENERIC;
+	}
+
+	return TEE_SUCCESS;
+}
+
 TEE_Result cdsp0_fw_start(void)
 {
 	struct qcom_pas_data *data = cdsp0_get_pas_data();
 	vaddr_t base = io_pa_or_va(&data->base, data->size);
 	uint64_t timeout = timeout_init_us(BOOT_FSM_TIMEOUT);
+	TEE_Result res = TEE_SUCCESS;
+
+	res = cdsp0_reset_shared_channel();
+	if (res != TEE_SUCCESS)
+		return res;
 
 	/* QDSPV73SS out of reset sequence */
 	io_setbits32(base + TURING_QDSP6SS_CORE_CBCR, CBCR_BRANCH_ENABLE_BIT);
