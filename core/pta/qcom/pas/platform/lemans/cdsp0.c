@@ -179,8 +179,8 @@ static const struct fw_rsc_devmem turing_mem_res[] = {
 		.da = 0x23047000, .pa = 0x23047000, .len = 0x1000, },
 	{ .name = "emac_sgmii", .flags = IOMMU_READ | IOMMU_WRITE,
 		.da = 0x2304e000, .pa = 0x2304e000, .len = 0x2000, },
-	{ .name = "nsp_7806", .flags = IOMMU_READ | IOMMU_WRITE,
-		.da = 0x90860000, .pa = 0x90860000, .len = 0x400000, },
+	{ .name = "nsp_7806", .flags = IOMMU_READ,
+		.da = 0x90860000, .pa = 0x90860000, .len = 0x20000, },
 };
 
 DEFINE_RESOURCE_TABLE(TURING, ARRAY_SIZE(turing_mem_res));
