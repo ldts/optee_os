@@ -68,21 +68,18 @@ TEE_Result qcom_lucidevo_pll_enable(vaddr_t pll_base,
 #include <drivers/clk_qcom_cfg.h>
 
 /*
- * Look up a QUP SE clk this driver registered, by name. qcom has no secure
- * DT, so a bus consumer acquires the clk this way instead of
- * clk_dt_get_by_name(), then drives it via the common clk API.
+ * Look up a clk this driver registered. qcom has no secure DT, so a consumer
+ * acquires the clk by name instead of clk_dt_get_by_name().
  */
 TEE_Result qcom_clk_get_by_name(const char *name, struct clk **out);
 
-/* Enable hardware DFS on a registered QUP SE clk (no clk_ops equivalent). */
+/* Enable hardware DFS on a registered clk (no clk_ops equivalent). */
 TEE_Result qcom_clk_enable_dfs(struct clk *clk);
 
 /*
- * Return the frequency plan (domain) backing @clk, or NULL if @clk is not a
- * QUP SE clk this driver registered. A GENI bus consumer walks
- * domain->configs[] to run its own serial-engine divider search, then drives
- * the clk via clk_set_rate()/qcom_clk_enable_dfs() and takes the chosen row's
- * DFS index straight from its dfs_idx field.
+ * Frequency plan behind @clk, or NULL if this driver did not register it. A
+ * consumer walks domain->configs[] to run its own divider search and takes the
+ * chosen row's DFS index from its dfs_idx field.
  */
 const struct qcom_clk_domain *qcom_clk_get_domain(struct clk *clk);
 #endif /* CFG_QCOM_CLK_CFG */

@@ -2,12 +2,11 @@
 /*
  * Copyright (c) 2026, Qualcomm Technologies, Inc. and/or its subsidiaries.
  *
- * RPMh CX/MX rail voting for QUP SE rate changes. Kept separate from the RCG
+ * RPMh CX/MX rail voting for clock rate changes. Kept separate from the RCG
  * walker (clk-qcom.c) so a non-RPMh target can supply its own rail-vote
  * backend behind the same qcom_clk_volt_vote() contract.
  */
 
-#include <assert.h>
 #include <drivers/qcom/cmd_db/cmd_db.h>
 #include <drivers/qcom/rpmh/rpmh_client.h>
 #include <kernel/mutex.h>
@@ -16,30 +15,32 @@
 #include "clk_qcom_volt.h"
 
 /*
- * Vote a corner before raising the rate and after lowering it, so a rate is
- * never programmed under-volted. RPMh takes an ordinal into the rail's
- * supported-corner list (cmd_db aux data), not the raw corner, so
- * qcom_cx_corner_to_hlvl() resolves that first.
+ * A rate is never programmed under-volted: the corner is voted before the rate
+ * is raised and released only after it is lowered.
  *
- * A single aggregate corner is voted for the whole config: each domain holds
- * a reference count per corner (votes[]) instead of its own vote, and the rail
- * is held at the highest corner with a nonzero count -- so one SE lowering its
- * need never drops the rail below what another SE still requires.
+ * Domains share one aggregate vote. Each holds a reference count per corner
+ * (votes[]) and the rails sit at the highest corner with a nonzero count, so
+ * one domain lowering its need never drops the rails below what another needs.
  */
-#define QCOM_CLK_VLVL_MAX	16
+
+#define QCOM_CLK_VLVL_MAX	32
+
+/* CX plus, where the target has it, MX. */
+#define QCOM_CLK_RAIL_MAX	2
+
+/* A partial vote left the rails disagreeing; no real corner compares equal. */
+#define QCOM_CLK_CORNER_UNKNOWN	0xFFFF
 
 struct qcom_clk_volt {
 	struct mutex lock;	/* serialises the vote + tracking state */
 	struct rpmh_client *rpmh;
 	bool ready;
-	uint32_t cx_addr;
-	uint32_t mx_addr;
-	bool have_mx;
-	uint16_t vlvls[QCOM_CLK_VLVL_MAX];
+	uint32_t rails[QCOM_CLK_RAIL_MAX];
+	uint32_t n_rails;
+	uint16_t vlvls[QCOM_CLK_VLVL_MAX];	/* ascending */
 	uint32_t n_vlvls;
-	uint16_t voted;		/* corner currently voted on the rail */
-	bool desync;		/* CX/MX may disagree with @voted */
 	uint16_t votes[QCOM_CLK_VLVL_MAX];	/* reference count per corner */
+	uint16_t voted;		/* corner on the rails; 0 means nothing voted */
 };
 
 static struct qcom_clk_volt qcom_clk_volt = {
@@ -51,41 +52,49 @@ static TEE_Result qcom_clk_volt_init(void)
 	struct qcom_clk_volt *v = &qcom_clk_volt;
 	size_t len = sizeof(v->vlvls);
 	TEE_Result res = TEE_SUCCESS;
+	uint32_t addr = 0;
 
 	if (v->ready)
 		return TEE_SUCCESS;
 
 	if (!v->rpmh) {
-		v->rpmh = rpmh_create_handle(RSC_DRV_SECURE, "clk_qup");
+		v->rpmh = rpmh_create_handle(RSC_DRV_SECURE, "clk");
 		if (!v->rpmh)
 			return TEE_ERROR_GENERIC;
 	}
 
-	res = cmd_db_get_addr("cx.lvl", &v->cx_addr);
+	/* Rebuilt from scratch, so a retry after a partial init cannot grow. */
+	v->n_rails = 0;
+
+	res = cmd_db_get_addr("cx.lvl", &addr);
 	if (res)
 		return res;
+	v->rails[v->n_rails++] = addr;
 
-	/*
-	 * A rail advertising more corners than vlvls[] holds would leave the
-	 * top ones unreachable, so take the short-buffer error rather than a
-	 * partial list.
-	 */
+	/* Short-buffer error rather than a list missing its top corners. */
 	res = cmd_db_get_aux("cx.lvl", (uint8_t *)v->vlvls, &len);
 	if (res)
 		return res;
 	v->n_vlvls = len / sizeof(v->vlvls[0]);
+
+	/* Only trailing zeros are padding: index 0 is a real corner (OFF). */
+	while (v->n_vlvls > 1 && v->vlvls[v->n_vlvls - 1] == 0)
+		v->n_vlvls--;
+
 	if (!v->n_vlvls)
 		return TEE_ERROR_BAD_STATE;
 
 	/* MX tracks CX on this target; vote it too when the rail exists. */
-	if (!cmd_db_get_addr("mx.lvl", &v->mx_addr))
-		v->have_mx = true;
+	if (!cmd_db_get_addr("mx.lvl", &addr))
+		v->rails[v->n_rails++] = addr;
 
 	v->ready = true;
+
 	return TEE_SUCCESS;
 }
 
-static TEE_Result qcom_cx_corner_to_hlvl(uint16_t corner, uint32_t *hlvl)
+/* RPMh takes an ordinal into the rail's corner list, not the raw corner. */
+static TEE_Result qcom_corner_to_hlvl(uint16_t corner, uint32_t *hlvl)
 {
 	uint32_t i = 0;
 
@@ -99,48 +108,43 @@ static TEE_Result qcom_cx_corner_to_hlvl(uint16_t corner, uint32_t *hlvl)
 	return TEE_ERROR_BAD_PARAMETERS;
 }
 
-/* Issue the aggregate corner vote to CX (and MX). Caller holds v->lock. */
+/* Caller holds v->lock. */
 static TEE_Result qcom_clk_volt_apply(uint16_t corner)
 {
 	struct qcom_clk_volt *v = &qcom_clk_volt;
 	uint32_t hlvl = 0;
 	uint32_t req_id = 0;
+	uint32_t i = 0;
 	TEE_Result res = TEE_SUCCESS;
 
-	if (corner == v->voted && !v->desync)
+	if (corner == v->voted)
 		return TEE_SUCCESS;
 
-	res = qcom_cx_corner_to_hlvl(corner, &hlvl);
+	/* Resolved first, so an unsupported corner strands no state below. */
+	res = qcom_corner_to_hlvl(corner, &hlvl);
 	if (res)
 		return res;
 
-	/*
-	 * CX and MX are voted as a pair. If one lands and the other fails the
-	 * rails disagree with @voted, so flag the mismatch and let the next
-	 * call re-vote both instead of taking the no-change shortcut above.
-	 */
-	v->desync = true;
+	/* UNKNOWN until every rail lands, so a partial vote re-votes. */
+	v->voted = QCOM_CLK_CORNER_UNKNOWN;
 
-	res = rpmh_send_command(v->rpmh, RPMH_SET_ACTIVE, true, v->cx_addr,
-				hlvl, &req_id);
-	if (res)
-		return res;
-	rpmh_barrier_single(v->rpmh, req_id);
-
-	if (v->have_mx) {
+	for (i = 0; i < v->n_rails; i++) {
 		res = rpmh_send_command(v->rpmh, RPMH_SET_ACTIVE, true,
-					v->mx_addr, hlvl, &req_id);
+					v->rails[i], hlvl, &req_id);
 		if (res)
 			return res;
 		rpmh_barrier_single(v->rpmh, req_id);
 	}
 
 	v->voted = corner;
-	v->desync = false;
+
 	return TEE_SUCCESS;
 }
 
-/* Highest corner with a nonzero reference count, or 0 if none. */
+/*
+ * Highest corner with a nonzero count, or 0 for none. Returns a corner and not
+ * an index: 0 is not a legal corner, so it doubles as "nothing voted".
+ */
 static uint16_t qcom_clk_volt_peak(void)
 {
 	struct qcom_clk_volt *v = &qcom_clk_volt;
@@ -154,10 +158,7 @@ static uint16_t qcom_clk_volt_peak(void)
 	return peak;
 }
 
-/*
- * Move a domain's vote from corner @old to @new and re-vote the rail at the
- * new aggregate. 0 means "no vote". Called under v->lock.
- */
+/* Move one domain's vote between corners; 0 means no vote. Holds v->lock. */
 static TEE_Result qcom_clk_volt_move(uint16_t old_corner, uint16_t new_corner)
 {
 	struct qcom_clk_volt *v = &qcom_clk_volt;
@@ -165,23 +166,20 @@ static TEE_Result qcom_clk_volt_move(uint16_t old_corner, uint16_t new_corner)
 	uint32_t new_idx = 0;
 	TEE_Result res = TEE_SUCCESS;
 
-	if (old_corner == new_corner) {
-		/* Refcounts unchanged, but a stranded desync needs a retry. */
-		if (v->desync)
-			return qcom_clk_volt_apply(qcom_clk_volt_peak());
-		return TEE_SUCCESS;
+	if (new_corner) {
+		res = qcom_corner_to_hlvl(new_corner, &new_idx);
+		if (res)
+			return res;
 	}
 
-	if (new_corner) {
-		res = qcom_cx_corner_to_hlvl(new_corner, &new_idx);
-		if (res)
-			return res;
-	}
 	if (old_corner) {
-		res = qcom_cx_corner_to_hlvl(old_corner, &old_idx);
+		res = qcom_corner_to_hlvl(old_corner, &old_idx);
 		if (res)
 			return res;
-		assert(v->votes[old_idx]);
+
+		/* Caller-tracked state: a stale corner would pin the rails. */
+		if (!v->votes[old_idx])
+			return TEE_ERROR_BAD_STATE;
 	}
 
 	if (new_corner)
@@ -195,10 +193,9 @@ static TEE_Result qcom_clk_volt_move(uint16_t old_corner, uint16_t new_corner)
 			v->votes[new_idx]--;
 		if (old_corner)
 			v->votes[old_idx]++;
-		return res;
 	}
 
-	return TEE_SUCCESS;
+	return res;
 }
 
 TEE_Result qcom_clk_volt_vote(uint16_t old_corner, uint16_t new_corner)

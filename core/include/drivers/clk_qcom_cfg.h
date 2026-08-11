@@ -2,30 +2,26 @@
 /*
  * Copyright (c) 2026, Qualcomm Technologies, Inc. and/or its subsidiaries.
  *
- * Slim data contract for the QUPv3 serial-engine clock config consumed by the
- * OP-TEE QUP SE clock provider (clk-qcom.c). Only the fields needed to
- * program an RCG mux/divider/MND and its DFS banks are kept; source
- * selection (mux_sel) is pre-resolved.
+ * Data contract for a platform's clock domains, consumed by the generic clock
+ * provider in clk-qcom.c.
  */
 
 #ifndef _CLK_QCOM_CFG_H_
 #define _CLK_QCOM_CFG_H_
 
+#include <mm/core_memprot.h>
 #include <stdint.h>
+#include <types_ext.h>
 
 /*
  * One frequency configuration row for an RCG.
  *
- * @freq_hz  Output frequency in Hz.
- * @mux_sel  RCG source-select index (CFG_RCGR SRC_SEL), pre-resolved.
- * @div2x    Twice the half-integer source divider; the register encodes
- *           SRC_DIV as (div2x - 1), 0 means no divide.
- * @m, @n    MND fractional-divider numerator/denominator; used only when
- *           (m != 0 && m < n).
- * @dfs_idx  DFS performance-state index for this row, or 0xFF if none.
- * @cx_level CX/MX voltage corner this rate requires (raw rail_voltage_level,
- *           e.g. MIN_SVS 0x30); voted on cx.lvl/mx.lvl around the mux
- *           program. 0 means no vote for this row.
+ * @div2x    Twice the half-integer source divider; SRC_DIV is encoded as
+ *           (div2x - 1). 0 means no divide.
+ * @m, @n    MND fractional divider; used only when (m != 0 && m < n).
+ * @dfs_idx  DFS performance-state index, or QCOM_DFS_NA.
+ * @cx_level Raw rail_voltage_level this rate requires (e.g. MIN_SVS 0x30),
+ *           voted around the mux program. 0 means no vote.
  */
 struct qcom_clk_mux_config {
 	uint32_t freq_hz;
@@ -40,32 +36,44 @@ struct qcom_clk_mux_config {
 #define QCOM_DFS_NA		0xFF
 
 /*
- * A clock domain (one RCG) and its frequency plan.
+ * One register block a domain's registers live in, e.g. one GCC instance. A
+ * target may split domains across per-quadrant controllers alongside the
+ * central GCC, so each domain names its own block rather than assuming one
+ * global base.
  *
- * @name             Clock name, e.g. "gcc_qupv3_wrap0_s0_clk".
- * @cmd_rcgr_offset  GCC-relative offset of the domain's CMD_RCGR; the
- *                   CFG/M/N/D and DFS banks sit at fixed offsets from it.
- * @cbcr_offset      GCC-relative offset of the SE's branch control register
- *                   (CBCR sits 8 bytes below CMD_RCGR on QUPv3). CLK_OFF is
- *                   always polled here regardless of vote-vs-direct gating.
- *                   QUP SEs have no GDSC, so no power domain is modelled.
- * @vote_reg_offset  GCC-relative offset of the shared vote register this
- *                   SE's branch enable is gated through. Always nonzero on
- *                   lemans -- no SE gates directly off its own CBCR.
- * @vote_bit         Bit position (0-31) of this SE within @vote_reg_offset.
- *                   Assignment is per-target/per-SE, so both fields are
- *                   supplied rather than derived.
- * @dfs_states       Number of DFS performance states the RCG supports (8 for
- *                   QUP SE); 0 means DFS is not supported.
- * @configs          Frequency-configuration array of @n_configs rows.
- * @n_configs        Number of rows in @configs; the walker iterates by this
- *                   count (the array is not sentinel-terminated).
+ * @io.va is filled in and cached by io_pa_or_va() on first resolve. @size also
+ * bounds-checks each domain's offsets.
+ */
+struct qcom_clk_regmap {
+	struct io_pa_va io;
+	size_t size;
+};
+
+/*
+ * A clock domain: a gated branch, optionally with an RCG and frequency plan.
+ *
+ * Register locations are full physical addresses matching the HWIO_<reg>_ADDR
+ * values in the reference driver's header, so a row can be read against the
+ * hardware documentation without resolving which base it is relative to.
+ *
+ * @cmd_rcgr_addr  CFG/M/N/D and the DFS banks sit at fixed offsets from it.
+ *                 0 marks a branch-only domain: enable/disable only, set_rate
+ *                 and DFS are rejected.
+ * @cbcr_addr      Never derived -- its distance from @cmd_rcgr_addr varies by
+ *                 target and even by wrapper. CLK_OFF is always polled here.
+ * @vote_reg_addr  Shared vote register this branch enable is gated through.
+ *                 Nonzero on every supported target.
+ * @vote_bit       Bit position within @vote_reg_addr; per-target, so supplied
+ *                 rather than derived.
+ * @dfs_states     DFS performance states the RCG supports; 0 means no DFS.
+ * @n_configs      Rows in @configs; the array is not sentinel-terminated.
  */
 struct qcom_clk_domain {
 	const char *name;
-	uint32_t cmd_rcgr_offset;
-	uint32_t cbcr_offset;
-	uint32_t vote_reg_offset;
+	struct qcom_clk_regmap *regmap;
+	paddr_t cmd_rcgr_addr;
+	paddr_t cbcr_addr;
+	paddr_t vote_reg_addr;
 	uint8_t vote_bit;
 	uint16_t dfs_states;
 	const struct qcom_clk_mux_config *configs;
@@ -73,29 +81,25 @@ struct qcom_clk_domain {
 };
 
 /*
- * Vote entry for one RCG source (upstream PLL) selectable via @mux_sel. RCGs
- * in this driver have no parent clk; before switching onto a PLL source the
- * walker places a branch vote so the (already-configured) PLL is held on.
- * Direct GCC register write, not RPMh.
+ * Vote entry for one RCG source (upstream PLL). RCGs here have no parent clk,
+ * so before switching onto a PLL source the walker places a branch vote to hold
+ * the already-configured PLL on. Direct register write, not RPMh.
  *
- * @mux_sel          RCG SRC_SEL index this entry describes.
- * @vote_reg_offset  GCC-relative offset of the PLL branch-enable vote
- *                   register.
- * @vote_bit         Bit position (0-31) of this PLL within that register.
+ * A source needing no vote (e.g. XO) has no entry and voting is skipped.
  *
- * A source needing no vote (e.g. XO) has no entry, and the walker skips
- * voting for rows that select it.
+ * @regmap  Part of the lookup key: each controller has its own GPLL0 and its
+ *          own PLL vote register.
  */
 struct qcom_clk_src_vote {
+	struct qcom_clk_regmap *regmap;
 	uint32_t mux_sel;
-	uint32_t vote_reg_offset;
+	paddr_t vote_reg_addr;
 	uint8_t vote_bit;
 };
 
 /*
- * The per-target config: walker-visible clock domains plus the PLL source-vote
- * table keyed by @mux_sel. Provided by the target's platform translation
- * unit. @src_votes may be NULL/0 on a target needing no source voting.
+ * Per-target config, provided by the target's translation unit. @src_votes may
+ * be NULL/0 on a target needing no source voting.
  */
 struct qcom_clk_cfg {
 	const struct qcom_clk_domain *domains;

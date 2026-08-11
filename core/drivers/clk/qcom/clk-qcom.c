@@ -185,23 +185,33 @@ TEE_Result qcom_clock_enable(enum qcom_clk_group group)
 }
 
 #ifdef CFG_QCOM_CLK_CFG
-/* Largest offset from CMD_RCGR the walker touches (last DFS perf-D bank). */
-static uint32_t qcom_rcg_window(uint16_t dfs_states)
+/*
+ * Largest offset from CMD_RCGR the walker touches. Claiming the DFS extent on a
+ * domain without DFS would falsely reject an RCG near the top of its regmap.
+ */
+static uint32_t qcom_rcg_span(uint16_t dfs_states)
 {
-	return QCOM_RCG_PERF_D_DFSR_REG_OFFSET +
-	       0x4 * (dfs_states ? dfs_states - 1 : 0);
-}
+	if (!dfs_states)
+		return QCOM_RCG_D_REG_OFFSET;
 
-static vaddr_t qcom_clk_gcc_base(void)
-{
-	struct io_pa_va gcc_io = { .pa = GCC_BASE };
-
-	return io_pa_or_va(&gcc_io, GCC_SIZE);
+	return QCOM_RCG_PERF_D_DFSR_REG_OFFSET + 0x4 * (dfs_states - 1);
 }
 
 /*
- * Program SRC_SEL/SRC_DIV, and the MND divider when @cfg->m != 0 && m < n.
+ * io_pa_or_va() validates the regmap base, not the per-register offset added on
+ * top: an offset past @regmap->size would resolve outside the mapped block.
  */
+static TEE_Result qcom_clk_regmap_va(struct qcom_clk_regmap *regmap,
+				     paddr_t pa, size_t span, vaddr_t *va)
+{
+	if (pa < regmap->io.pa || pa - regmap->io.pa + span > regmap->size)
+		return TEE_ERROR_BAD_PARAMETERS;
+
+	*va = io_pa_or_va(&regmap->io, regmap->size) + (pa - regmap->io.pa);
+
+	return TEE_SUCCESS;
+}
+
 static void qcom_config_mux_offs(vaddr_t cgr,
 				 const struct qcom_clk_mux_config *cfg,
 				 uint32_t cfg_off, uint32_t m_off,
@@ -231,15 +241,12 @@ static void qcom_config_mux_offs(vaddr_t cgr,
 	io_write32(cgr + cfg_off, val);
 }
 
-/*
- * Scan @domain's frequency plan for the lowest configured rate >= @freq_hz
- * (meet-or-exceed). Returns NULL if the plan's top rate is below @freq_hz.
- */
+/* Lowest plan rate >= @freq_hz, or NULL if the plan's top rate is lower. */
 static const struct qcom_clk_mux_config *
 qcom_find_config(const struct qcom_clk_domain *domain, uint32_t freq_hz)
 {
 	const struct qcom_clk_mux_config *at_least = NULL;
-	uint32_t at_least_hz = 0xFFFFFFFF;
+	uint32_t at_least_hz = UINT32_MAX;
 	uint32_t i = 0;
 
 	for (i = 0; i < domain->n_configs; i++) {
@@ -258,91 +265,100 @@ qcom_find_config(const struct qcom_clk_domain *domain, uint32_t freq_hz)
 }
 
 /*
- * Vote the RCG's upcoming PLL source on before switching the mux onto it
- * (the PLL itself is already configured by an earlier boot image). Direct
- * GCC write, not RPMh. XO has no source-vote entry and is skipped; the vote
- * is left in place afterwards (no per-rate un-vote).
+ * Per-domain state behind a parentless struct clk. VAs are resolved once at
+ * registration; cmd_rcgr_va stays 0 for a branch-only domain.
  */
-static void qcom_clk_src_vote(vaddr_t gcc_base, uint32_t mux_sel)
+struct qcom_clk_priv {
+	const struct qcom_clk_domain *domain;
+	struct clk *clk;
+	vaddr_t cbcr_va;
+	vaddr_t vote_va;
+	vaddr_t cmd_rcgr_va;
+	uint16_t corner;	/* corner voted for this domain */
+	uint32_t rate;		/* last resolved output rate, 0 until set */
+	bool dfs_on;		/* hardware DFS already handed the RCG */
+};
+
+static struct qcom_clk_priv *qcom_clk_privs;
+
+/*
+ * Entries fully resolved and registered; lookups bound on this rather than
+ * cfg->n_domains because a driver_init failure is logged, not fatal.
+ */
+static uint32_t qcom_clk_priv_count;
+
+/* Parallel to qcom_clk_cfg_get()->src_votes. */
+static vaddr_t *qcom_src_vote_va;
+
+/*
+ * Hold the RCG's upcoming PLL source on before switching the mux onto it; the
+ * PLL itself is already configured by an earlier boot image. XO needs no vote
+ * and has no entry. The vote is left in place afterwards.
+ */
+static void qcom_clk_src_vote(struct qcom_clk_regmap *regmap, uint32_t mux_sel)
 {
 	const struct qcom_clk_cfg *cfg = qcom_clk_cfg_get();
 	uint32_t i = 0;
 
-	if (!cfg || !cfg->src_votes)
-		return;
-
 	for (i = 0; i < cfg->n_src_votes; i++) {
 		const struct qcom_clk_src_vote *sv = &cfg->src_votes[i];
 
-		if (sv->mux_sel != mux_sel)
+		/* Each controller has its own GPLL0 at this mux index. */
+		if (sv->mux_sel != mux_sel || sv->regmap != regmap)
 			continue;
 
-		io_setbits32(gcc_base + sv->vote_reg_offset, BIT(sv->vote_bit));
+		io_setbits32(qcom_src_vote_va[i], BIT(sv->vote_bit));
 		return;
 	}
 }
 
 /*
- * Program @domain's RCG to the lowest planned rate >= @freq_hz, voting the
- * CX/MX rail and the row's PLL source around the change. @corner tracks the
- * caller's currently-voted corner and is updated in place.
+ * Rail raised before speeding up and lowered after slowing down, so a rate is
+ * never programmed under-volted.
  */
-static TEE_Result qcom_domain_set_rate(const struct qcom_clk_domain *domain,
-				       uint32_t freq_hz, uint16_t *corner,
-				       uint32_t *res_hz)
+static TEE_Result qcom_domain_set_rate(struct qcom_clk_priv *priv,
+				       uint32_t freq_hz, uint32_t *res_hz)
 {
+	const struct qcom_clk_domain *domain = priv->domain;
 	const struct qcom_clk_mux_config *cfg = NULL;
-	vaddr_t gcc_base = 0;
-	vaddr_t cgr = 0;
 	uint32_t val = 0;
-	uint16_t prev = corner ? *corner : 0;
+	uint16_t prev = priv->corner;
 	uint16_t next = prev;
 	TEE_Result res = TEE_SUCCESS;
 
-	if (!domain || !domain->cmd_rcgr_offset)
-		return TEE_ERROR_BAD_PARAMETERS;
-
-	if (domain->cmd_rcgr_offset + qcom_rcg_window(domain->dfs_states) >=
-	    GCC_SIZE)
+	if (!priv->cmd_rcgr_va)
 		return TEE_ERROR_BAD_PARAMETERS;
 
 	cfg = qcom_find_config(domain, freq_hz);
 	if (!cfg)
 		return TEE_ERROR_ITEM_NOT_FOUND;
 
-	gcc_base = qcom_clk_gcc_base();
-	if (!gcc_base)
-		return TEE_ERROR_GENERIC;
+	/* cx_level 0 means no vote, so this releases any corner still held. */
+	next = cfg->cx_level;
 
-	cgr = gcc_base + domain->cmd_rcgr_offset;
-
-	if (corner && cfg->cx_level)
-		next = cfg->cx_level;
-
-	/* Raise the rail before speeding up; abort on failure. */
 	if (next > prev) {
 		res = qcom_clk_volt_vote(prev, next);
 		if (res)
 			return res;
-		*corner = next;
+		priv->corner = next;
 	}
 
-	qcom_clk_src_vote(gcc_base, cfg->mux_sel);
+	qcom_clk_src_vote(domain->regmap, cfg->mux_sel);
 
-	qcom_config_mux_offs(cgr, cfg, QCOM_RCG_CFG_REG_OFFSET,
+	qcom_config_mux_offs(priv->cmd_rcgr_va, cfg, QCOM_RCG_CFG_REG_OFFSET,
 			     QCOM_RCG_M_REG_OFFSET, QCOM_RCG_N_REG_OFFSET,
 			     QCOM_RCG_D_REG_OFFSET);
 
-	io_setbits32(cgr, QCOM_RCG_CMD_CFG_UPDATE_FMSK);
+	io_setbits32(priv->cmd_rcgr_va, QCOM_RCG_CMD_CFG_UPDATE_FMSK);
 
-	if (IO_READ32_POLL_TIMEOUT(cgr, val,
+	if (IO_READ32_POLL_TIMEOUT(priv->cmd_rcgr_va, val,
 				   !(val & QCOM_RCG_CMD_CFG_UPDATE_FMSK),
 				   1, 10 * 1000))
 		return TEE_ERROR_TIMEOUT;
 
-	/* Lower the rail after slowing down; best-effort (stays safe-high). */
+	/* Best-effort: a failed step down just leaves the rail safe-high. */
 	if (next < prev && !qcom_clk_volt_vote(prev, next))
-		*corner = next;
+		priv->corner = next;
 
 	if (res_hz)
 		*res_hz = cfg->freq_hz;
@@ -350,25 +366,17 @@ static TEE_Result qcom_domain_set_rate(const struct qcom_clk_domain *domain,
 	return TEE_SUCCESS;
 }
 
-static TEE_Result
-qcom_clock_domain_enable_dfs(const struct qcom_clk_domain *domain)
+static TEE_Result qcom_clock_domain_enable_dfs(struct qcom_clk_priv *priv)
 {
-	vaddr_t gcc_base = 0;
-	vaddr_t cgr = 0;
+	const struct qcom_clk_domain *domain = priv->domain;
 	uint32_t i = 0;
 
-	if (!domain || !domain->cmd_rcgr_offset || !domain->dfs_states)
+	if (!domain->dfs_states || !priv->cmd_rcgr_va)
 		return TEE_ERROR_BAD_PARAMETERS;
 
-	if (domain->cmd_rcgr_offset + qcom_rcg_window(domain->dfs_states) >=
-	    GCC_SIZE)
-		return TEE_ERROR_BAD_PARAMETERS;
-
-	gcc_base = qcom_clk_gcc_base();
-	if (!gcc_base)
-		return TEE_ERROR_GENERIC;
-
-	cgr = gcc_base + domain->cmd_rcgr_offset;
+	/* Rewriting the banks under a running DFS machine would corrupt it. */
+	if (priv->dfs_on)
+		return TEE_SUCCESS;
 
 	for (i = 0; i < domain->n_configs; i++) {
 		const struct qcom_clk_mux_config *c = &domain->configs[i];
@@ -379,58 +387,54 @@ qcom_clock_domain_enable_dfs(const struct qcom_clk_domain *domain)
 			continue;
 
 		perf = 0x4 * c->dfs_idx;
-		qcom_config_mux_offs(cgr, c,
+		qcom_config_mux_offs(priv->cmd_rcgr_va, c,
 				     QCOM_RCG_PERF_DFSR_REG_OFFSET + perf,
 				     QCOM_RCG_PERF_M_DFSR_REG_OFFSET + perf,
 				     QCOM_RCG_PERF_N_DFSR_REG_OFFSET + perf,
 				     QCOM_RCG_PERF_D_DFSR_REG_OFFSET + perf);
 	}
 
-	/* Hand rate control to the hardware DFS machine. */
-	io_write32(cgr + QCOM_RCG_CMD_DFSR_REG_OFFSET,
+	io_write32(priv->cmd_rcgr_va + QCOM_RCG_CMD_DFSR_REG_OFFSET,
 		   QCOM_RCG_CMD_DFSR_HW_CLK_CONTROL_FMSK |
 		   QCOM_RCG_CMD_DFSR_DFS_EN_FMSK);
 
+	priv->dfs_on = true;
+
 	return TEE_SUCCESS;
 }
-
-/*
- * QUP SE clk provider: registers each domain as a struct clk with no parent
- * so a TEE-side bus (SPI/I2C) consumer drives it via the common clk API.
- * enable/disable gate the shared vote register (QUP SEs have no GDSC);
- * set_rate tracks each SE's voted corner in its own priv.
- */
-struct qcom_clk_priv {
-	const struct qcom_clk_domain *domain;
-	struct clk *clk;
-	uint16_t corner;	/* CX/MX corner currently voted for this SE */
-	uint32_t rate;		/* last resolved output rate, 0 until set */
-};
-
-/* Priv array parallel to qcom_clk_cfg_get()->domains. */
-static struct qcom_clk_priv *qcom_clk_privs;
 
 static TEE_Result qcom_clk_priv_set_rate(struct clk *clk, unsigned long rate,
 					 unsigned long parent_rate __unused)
 {
-	struct qcom_clk_priv *qup = clk->priv;
+	struct qcom_clk_priv *priv = clk->priv;
 	uint32_t res_hz = 0;
 	TEE_Result res = TEE_SUCCESS;
 
-	res = qcom_domain_set_rate(qup->domain, rate, &qup->corner, &res_hz);
+	/*
+	 * Reject rather than truncate to uint32_t Hz: a wrapped rate would
+	 * silently match some unrelated low plan row.
+	 */
+	if (rate > UINT32_MAX)
+		return TEE_ERROR_BAD_PARAMETERS;
+
+	res = qcom_domain_set_rate(priv, rate, &res_hz);
 	if (res)
 		return res;
 
-	qup->rate = res_hz;
+	priv->rate = res_hz;
 	return TEE_SUCCESS;
 }
 
+/*
+ * Last rate this driver programmed. After qcom_clk_enable_dfs() the hardware
+ * picks the rate, so this is the last software vote, not the live rate.
+ */
 static unsigned long qcom_clk_priv_get_rate(struct clk *clk,
 					    unsigned long parent_rate __unused)
 {
-	struct qcom_clk_priv *qup = clk->priv;
+	struct qcom_clk_priv *priv = clk->priv;
 
-	return qup->rate;
+	return priv->rate;
 }
 
 static inline bool cbcr_branch_off(uint32_t val)
@@ -439,53 +443,41 @@ static inline bool cbcr_branch_off(uint32_t val)
 }
 
 /*
- * Every QUP SE branch on this target gates through a shared vote register
- * rather than its own CBCR's CLK_ENABLE bit. CLK_OFF is still polled on the
- * SE's own CBCR regardless, since the vote register has no status bit.
+ * Every domain gates through a shared vote register rather than its own CBCR
+ * CLK_ENABLE bit. CLK_OFF is still polled on the CBCR, which has the only
+ * status bit.
+ *
+ * The clk core serialises these ops under one mutex, so the read-modify-write
+ * cannot race another TEE clk. It can still race Linux writing the same
+ * NS-mapped word; only not sharing a vote register would fix that.
  */
 static TEE_Result qcom_clk_priv_enable(struct clk *clk)
 {
-	struct qcom_clk_priv *qup = clk->priv;
-	const struct qcom_clk_domain *dom = qup->domain;
-	vaddr_t gcc_base = qcom_clk_gcc_base();
-	vaddr_t cbcr = 0;
+	struct qcom_clk_priv *priv = clk->priv;
 	int ret = 0;
 
-	if (!gcc_base || !dom->cbcr_offset || !dom->vote_reg_offset)
-		return TEE_ERROR_BAD_STATE;
+	io_setbits32(priv->vote_va, BIT(priv->domain->vote_bit));
 
-	cbcr = gcc_base + dom->cbcr_offset;
-
-	io_setbits32(gcc_base + dom->vote_reg_offset, BIT(dom->vote_bit));
-
-	if (io_read32(cbcr) & CBCR_HW_CTL_ENABLE_BIT)
+	if (io_read32(priv->cbcr_va) & CBCR_HW_CTL_ENABLE_BIT)
 		return TEE_SUCCESS;
 
-	REG_POLL_TIMEOUT(cbcr, 10 * 1000, 10, &ret, cbcr_branch_on);
+	REG_POLL_TIMEOUT(priv->cbcr_va, 10 * 1000, 10, &ret, cbcr_branch_on);
 
 	return ret < 0 ? TEE_ERROR_TIMEOUT : TEE_SUCCESS;
 }
 
 static void qcom_clk_priv_disable(struct clk *clk)
 {
-	struct qcom_clk_priv *qup = clk->priv;
-	const struct qcom_clk_domain *dom = qup->domain;
-	vaddr_t gcc_base = qcom_clk_gcc_base();
-	vaddr_t cbcr = 0;
+	struct qcom_clk_priv *priv = clk->priv;
 	int ret = 0;
 
-	if (!gcc_base || !dom->cbcr_offset || !dom->vote_reg_offset)
-		return;
-
-	cbcr = gcc_base + dom->cbcr_offset;
-
-	io_clrbits32(gcc_base + dom->vote_reg_offset, BIT(dom->vote_bit));
+	io_clrbits32(priv->vote_va, BIT(priv->domain->vote_bit));
 
 	/* HW_CTL drives the off-state; polling CLK_OFF would spin. */
-	if (io_read32(cbcr) & CBCR_HW_CTL_ENABLE_BIT)
+	if (io_read32(priv->cbcr_va) & CBCR_HW_CTL_ENABLE_BIT)
 		return;
 
-	REG_POLL_TIMEOUT(cbcr, 10 * 1000, 10, &ret, cbcr_branch_off);
+	REG_POLL_TIMEOUT(priv->cbcr_va, 10 * 1000, 10, &ret, cbcr_branch_off);
 }
 
 static const struct clk_ops qcom_clk_priv_ops = {
@@ -494,6 +486,54 @@ static const struct clk_ops qcom_clk_priv_ops = {
 	.set_rate = qcom_clk_priv_set_rate,
 	.get_rate = qcom_clk_priv_get_rate,
 };
+
+static TEE_Result qcom_clk_priv_resolve(struct qcom_clk_priv *priv)
+{
+	const struct qcom_clk_domain *domain = priv->domain;
+	TEE_Result res = TEE_SUCCESS;
+
+	res = qcom_clk_regmap_va(domain->regmap, domain->cbcr_addr,
+				 sizeof(uint32_t), &priv->cbcr_va);
+	if (res)
+		return res;
+
+	res = qcom_clk_regmap_va(domain->regmap, domain->vote_reg_addr,
+				 sizeof(uint32_t), &priv->vote_va);
+	if (res)
+		return res;
+
+	if (!domain->cmd_rcgr_addr)
+		return TEE_SUCCESS;
+
+	/* The DFS banks extend past CMD_RCGR, so span covers the whole set. */
+	return qcom_clk_regmap_va(domain->regmap, domain->cmd_rcgr_addr,
+				  qcom_rcg_span(domain->dfs_states) +
+				  sizeof(uint32_t), &priv->cmd_rcgr_va);
+}
+
+static TEE_Result qcom_clk_src_votes_resolve(const struct qcom_clk_cfg *cfg)
+{
+	uint32_t i = 0;
+
+	if (!cfg->n_src_votes)
+		return TEE_SUCCESS;
+
+	qcom_src_vote_va = calloc(cfg->n_src_votes, sizeof(*qcom_src_vote_va));
+	if (!qcom_src_vote_va)
+		return TEE_ERROR_OUT_OF_MEMORY;
+
+	for (i = 0; i < cfg->n_src_votes; i++) {
+		const struct qcom_clk_src_vote *sv = &cfg->src_votes[i];
+		TEE_Result res = qcom_clk_regmap_va(sv->regmap,
+						    sv->vote_reg_addr,
+						    sizeof(uint32_t),
+						    &qcom_src_vote_va[i]);
+		if (res)
+			return res;
+	}
+
+	return TEE_SUCCESS;
+}
 
 static TEE_Result qcom_clocks_register(void)
 {
@@ -507,49 +547,58 @@ static TEE_Result qcom_clocks_register(void)
 	if (!cfg || !cfg->n_domains)
 		return TEE_ERROR_BAD_STATE;
 
+	res = qcom_clk_src_votes_resolve(cfg);
+	if (res)
+		return res;
+
 	qcom_clk_privs = calloc(cfg->n_domains, sizeof(*qcom_clk_privs));
 	if (!qcom_clk_privs)
 		return TEE_ERROR_OUT_OF_MEMORY;
 
 	for (i = 0; i < cfg->n_domains; i++) {
-		struct qcom_clk_priv *qup = &qcom_clk_privs[i];
+		struct qcom_clk_priv *priv = &qcom_clk_privs[i];
 		struct clk *clk = NULL;
+
+		priv->domain = &cfg->domains[i];
+
+		res = qcom_clk_priv_resolve(priv);
+		if (res) {
+			EMSG("%s: bad register address", priv->domain->name);
+			return res;
+		}
 
 		clk = clk_alloc(cfg->domains[i].name, &qcom_clk_priv_ops,
 				NULL, 0);
 		if (!clk)
 			return TEE_ERROR_OUT_OF_MEMORY;
 
-		qup->domain = &cfg->domains[i];
-		qup->clk = clk;
-		clk->priv = qup;
+		priv->clk = clk;
+		clk->priv = priv;
 
 		res = clk_register(clk);
 		if (res) {
 			clk_free(clk);
+			priv->clk = NULL;
 			return res;
 		}
+
+		qcom_clk_priv_count = i + 1;
 	}
 
 	return TEE_SUCCESS;
 }
 
-/*
- * Look up a QUP SE clk by name. This platform has no secure DT, so a bus
- * consumer acquires the clk this way instead of clk_dt_get_by_name().
- */
 TEE_Result qcom_clk_get_by_name(const char *name, struct clk **out)
 {
-	const struct qcom_clk_cfg *cfg = qcom_clk_cfg_get();
 	uint32_t i = 0;
 
 	if (!name || !out)
 		return TEE_ERROR_BAD_PARAMETERS;
 
-	if (!qcom_clk_privs || !cfg)
+	if (!qcom_clk_priv_count)
 		return TEE_ERROR_BAD_STATE;
 
-	for (i = 0; i < cfg->n_domains; i++) {
+	for (i = 0; i < qcom_clk_priv_count; i++) {
 		if (!strcmp(qcom_clk_privs[i].domain->name, name)) {
 			*out = qcom_clk_privs[i].clk;
 			return TEE_SUCCESS;
@@ -559,32 +608,26 @@ TEE_Result qcom_clk_get_by_name(const char *name, struct clk **out)
 	return TEE_ERROR_ITEM_NOT_FOUND;
 }
 
-/* Enable hardware DFS on a registered QUP SE clk (no clk_ops equivalent). */
 TEE_Result qcom_clk_enable_dfs(struct clk *clk)
 {
-	struct qcom_clk_priv *qup = NULL;
+	struct qcom_clk_priv *priv = NULL;
 
 	if (!clk || clk->ops != &qcom_clk_priv_ops)
 		return TEE_ERROR_BAD_PARAMETERS;
 
-	qup = clk->priv;
-	return qcom_clock_domain_enable_dfs(qup->domain);
+	priv = clk->priv;
+	return qcom_clock_domain_enable_dfs(priv);
 }
 
-/*
- * Return the frequency plan (domain) backing @clk, or NULL if @clk is not a
- * QUP SE clk this driver registered. A bus consumer walks domain->configs[]
- * to run its own divider search, then drives the clk via the common clk API.
- */
 const struct qcom_clk_domain *qcom_clk_get_domain(struct clk *clk)
 {
-	struct qcom_clk_priv *qup = NULL;
+	struct qcom_clk_priv *priv = NULL;
 
 	if (!clk || clk->ops != &qcom_clk_priv_ops)
 		return NULL;
 
-	qup = clk->priv;
-	return qup->domain;
+	priv = clk->priv;
+	return priv->domain;
 }
 
 driver_init(qcom_clocks_register);
