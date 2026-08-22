@@ -20,9 +20,8 @@ register_phys_mem(MEM_AREA_IO_NSEC, GCC_BASE, GCC_SIZE);
 #include <platform_config.h>
 #include <string.h>
 #include <trace.h>
-
-#include "clk_qcom_volt.h"
 #include "clock_group_qcom.h"
+#include "rpmh_rail.h"
 #endif
 
 #define CBCR_BRANCH_ENABLE_BIT		BIT(0)
@@ -337,7 +336,7 @@ static TEE_Result qcom_domain_set_rate(struct qcom_clk_priv *priv,
 	next = cfg->cx_level;
 
 	if (next > prev) {
-		res = qcom_clk_volt_vote(prev, next);
+		res = rpmh_rail_vote(prev, next);
 		if (res)
 			return res;
 		priv->corner = next;
@@ -357,7 +356,7 @@ static TEE_Result qcom_domain_set_rate(struct qcom_clk_priv *priv,
 		return TEE_ERROR_TIMEOUT;
 
 	/* Best-effort: a failed step down just leaves the rail safe-high. */
-	if (next < prev && !qcom_clk_volt_vote(prev, next))
+	if (next < prev && !rpmh_rail_vote(prev, next))
 		priv->corner = next;
 
 	if (res_hz)
