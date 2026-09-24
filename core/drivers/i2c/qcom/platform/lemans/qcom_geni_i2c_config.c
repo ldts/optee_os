@@ -891,8 +891,8 @@ const struct qup_i2c_platform_cfg qup_i2c_config[] = {
 		.common_clocks_name = common_clocks_qup1,
 		.pin_groups         = qup1_se5_i2c_pin_groups,
 		.pin_group_count    = ARRAY_SIZE(qup1_se5_i2c_pin_groups),
-		.fw_image           = NULL,
-		.fw_image_size      = 0,
+		.fw_image           = i2c_qup_fw,
+		.fw_image_size      = sizeof(i2c_qup_fw),
 	},
 #endif
 #ifdef CFG_QUP1_SE6_I2C_EN

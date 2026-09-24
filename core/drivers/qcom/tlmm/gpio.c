@@ -265,4 +265,12 @@ static TEE_Result tlmm_init(void)
 	return TEE_SUCCESS;
 }
 
-driver_init(tlmm_init);
+/*
+ * Register at service_init so the pinctrl backend is up before every
+ * driver_init consumer that builds a pin state (qcom_geni_i2c via the SE05X
+ * session init, qcom_geni_spi, ...). tlmm_init only maps its register window,
+ * with no driver-level dependency, so service_init is safe. At driver_init it
+ * was tied with those consumers and, depending on link order, could run after
+ * them -- tlmm_make_pin_state() then failed with TEE_ERROR_BAD_STATE.
+ */
+service_init(tlmm_init);

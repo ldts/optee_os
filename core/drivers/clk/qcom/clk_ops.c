@@ -1054,4 +1054,12 @@ TEE_Result qcom_clk_get_dfs_rates_array(struct clk *clk, size_t start_index,
 	return TEE_SUCCESS;
 }
 
-driver_init(clocks_register);
+/*
+ * Register at service_init so the clock provider is up before every
+ * driver_init consumer that fetches clocks by name (qcom_geni_i2c via the
+ * SE05X session init, qcom_geni_spi, ...). Its only dependencies, cmd_db and
+ * rpmh_client, run at early_init, so service_init is safe. Keeping this at
+ * driver_init left it tied with those consumers and, depending on link order,
+ * qcom_clk_get_by_name() could run first and fail with TEE_ERROR_BAD_STATE.
+ */
+service_init(clocks_register);
