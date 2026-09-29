@@ -125,3 +125,4 @@ subdirs-y += counter
 subdirs-y += amd
 subdirs-y += spi
 subdirs-y += qcom
+subdirs-y += tpm2
