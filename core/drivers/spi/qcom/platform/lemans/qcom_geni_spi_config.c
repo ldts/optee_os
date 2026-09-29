@@ -174,12 +174,20 @@ register_phys_mem_pgdir(MEM_AREA_IO_SEC, QUP2_SE2_SPI_BASE, QUP_SPI_REG_SIZE);
 #define QUP2_SE2_SPI_CS_PIN		89
 
 static const unsigned int qup2_se2_spi_g0_pins[] = {
-	QUP2_SE2_SPI_MISO_PIN,
 	QUP2_SE2_SPI_MOSI_PIN,
 	QUP2_SE2_SPI_CS_PIN,
 };
 static const unsigned int qup2_se2_spi_g1_pins[] = {
 	QUP2_SE2_SPI_CLK_PIN,
+};
+/*
+ * MISO is an input driven by the target. A pull-down here fights the
+ * target's output driver and makes the line read as 0 whenever it is not
+ * actively driven, so leave it unbiased (matches the Linux bias-disable on
+ * the qup_spi16 pins).
+ */
+static const unsigned int qup2_se2_spi_g2_pins[] = {
+	QUP2_SE2_SPI_MISO_PIN,
 };
 
 static const struct tlmm_pin_group qup2_se2_spi_pin_groups[] = {
@@ -194,6 +202,14 @@ static const struct tlmm_pin_group qup2_se2_spi_pin_groups[] = {
 	{
 		.pins        = qup2_se2_spi_g1_pins,
 		.pin_count   = ARRAY_SIZE(qup2_se2_spi_g1_pins),
+		.func        = 1,
+		.pull        = TLMM_PULL_NONE,
+		.drive_ma    = 6,
+		.strong_pull = false,
+	},
+	{
+		.pins        = qup2_se2_spi_g2_pins,
+		.pin_count   = ARRAY_SIZE(qup2_se2_spi_g2_pins),
 		.func        = 1,
 		.pull        = TLMM_PULL_NONE,
 		.drive_ma    = 6,
