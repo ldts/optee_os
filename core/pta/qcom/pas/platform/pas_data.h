@@ -14,8 +14,13 @@
 
 struct qcom_pas_data {
 	uint32_t pas_id;
-	/* PAS_ID of the DTB firmware this depends on, or 0 if none. */
-	uint32_t dtb_pas_id;
+	/*
+	 * 0-terminated list of PAS_IDs this subsystem depends on: each must
+	 * be loaded before this one's fw_start() runs and must stay loaded
+	 * until after this one shuts down. NULL if this subsystem has no
+	 * dependencies.
+	 */
+	const uint32_t *depends_on;
 	struct io_pa_va base;
 	size_t size;
 	paddr_t fw_base;

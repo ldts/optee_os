@@ -7,9 +7,8 @@
 
 /*
  * The DTB blob carries no processor of its own: it is a data image that
- * cdsp_fw_start() (see cdsp.c) reads once it observes this subsystem is
- * loaded, via qcom_pas_lookup()/qcom_pas_is_loaded(). There is nothing to
- * program here.
+ * cdsp_fw_start() (see cdsp.c) reads once the core reports this subsystem
+ * is loaded, via qcom_pas_get_fw(). There is nothing to program here.
  */
 static TEE_Result cdsp_dtb_fw_start(struct qcom_pas_data *data __unused)
 {

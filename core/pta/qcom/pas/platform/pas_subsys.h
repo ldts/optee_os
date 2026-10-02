@@ -86,15 +86,21 @@ struct qcom_pas_subsys *qcom_pas_platform_subsys(size_t *count);
 struct qcom_pas_subsys *qcom_pas_lookup(uint32_t pas_id);
 
 /*
- * qcom_pas_is_loaded() : check whether @pas_id's firmware is loaded.
+ * qcom_pas_get_fw() : fetch the authenticated firmware location of @pas_id.
  *
- * Lets one subsystem's ops (see @dtb_pas_id in pas_data.h) determine
- * whether a dependency is ready without reaching into that subsystem's
- * private data.
+ * Lets one subsystem's ops (see depends_on in pas_data.h) obtain a
+ * dependency's firmware image without reaching into that subsystem's
+ * private data. The core guarantees load ordering (see
+ * pas_platform_auth_and_reset()), so a dependent's fw_start() can rely on
+ * this returning TEE_SUCCESS.
  *
- * @pas_id: PAS_ID of the subsystem to check.
- * Returns true if @pas_id is registered and currently loaded.
+ * @pas_id:  PAS_ID of the subsystem to query.
+ * @fw_base: out, physical base of the authenticated firmware.
+ * @fw_size: out, size of the authenticated firmware.
+ * Returns TEE_ERROR_NOT_SUPPORTED if @pas_id is not registered,
+ * TEE_ERROR_BAD_STATE if it is not loaded, TEE_SUCCESS otherwise.
  */
-bool qcom_pas_is_loaded(uint32_t pas_id);
+TEE_Result qcom_pas_get_fw(uint32_t pas_id, paddr_t *fw_base,
+			   size_t *fw_size);
 
 #endif /* PAS_SUBSYS_H */

@@ -25,7 +25,22 @@ struct qcom_pas_subsys *qcom_pas_lookup(uint32_t pas_id)
 	return NULL;
 }
 
-bool qcom_pas_is_loaded(uint32_t pas_id)
+TEE_Result qcom_pas_get_fw(uint32_t pas_id, paddr_t *fw_base, size_t *fw_size)
+{
+	struct qcom_pas_subsys *subsys = qcom_pas_lookup(pas_id);
+
+	if (!subsys)
+		return TEE_ERROR_NOT_SUPPORTED;
+	if (!subsys->data.loaded)
+		return TEE_ERROR_BAD_STATE;
+
+	*fw_base = subsys->data.fw_base;
+	*fw_size = subsys->data.fw_size;
+
+	return TEE_SUCCESS;
+}
+
+static bool qcom_pas_is_loaded(uint32_t pas_id)
 {
 	struct qcom_pas_subsys *subsys = qcom_pas_lookup(pas_id);
 
@@ -33,24 +48,54 @@ bool qcom_pas_is_loaded(uint32_t pas_id)
 }
 
 /*
- * qcom_pas_dependent() : find the subsystem that depends on @dtb_pas_id.
+ * qcom_pas_missing_dep() : first unmet dependency of @data.
  *
- * @dtb_pas_id: PAS_ID to search for among the platform's dtb_pas_id fields.
- * Returns the dependent subsystem, or NULL if @dtb_pas_id is unset (0) or
- * nothing depends on it.
+ * Scans @data->depends_on (a 0-terminated PAS_ID list) for an entry that
+ * is not currently loaded.
+ *
+ * Returns that PAS_ID, or 0 if every dependency is loaded (or there are
+ * none).
  */
-static struct qcom_pas_subsys *qcom_pas_dependent(uint32_t dtb_pas_id)
+static uint32_t qcom_pas_missing_dep(const struct qcom_pas_data *data)
+{
+	if (!data->depends_on)
+		return 0;
+
+	for (size_t i = 0; data->depends_on[i]; i++)
+		if (!qcom_pas_is_loaded(data->depends_on[i]))
+			return data->depends_on[i];
+
+	return 0;
+}
+
+/*
+ * qcom_pas_loaded_dependent() : find a loaded subsystem that depends on
+ * @pas_id.
+ *
+ * Scans every platform subsystem's depends_on list for @pas_id, returning
+ * the first match that is still loaded. Such a subsystem would break if
+ * @pas_id were torn down, so shutdown must be refused while one exists.
+ *
+ * @pas_id: PAS_ID about to be shut down.
+ * Returns the blocking subsystem, or NULL if none depends on @pas_id or
+ * all that do are already unloaded.
+ */
+static struct qcom_pas_subsys *qcom_pas_loaded_dependent(uint32_t pas_id)
 {
 	struct qcom_pas_subsys *subsys = NULL;
 	size_t count = 0;
 
-	if (!dtb_pas_id)
-		return NULL;
-
 	subsys = qcom_pas_platform_subsys(&count);
-	for (size_t i = 0; i < count; i++)
-		if (subsys[i].data.dtb_pas_id == dtb_pas_id)
-			return &subsys[i];
+	for (size_t i = 0; i < count; i++) {
+		const uint32_t *deps = subsys[i].data.depends_on;
+
+		if (!subsys[i].data.loaded || !deps)
+			continue;
+
+		for (size_t j = 0; deps[j]; j++)
+			if (deps[j] == pas_id)
+				return &subsys[i];
+	}
 
 	return NULL;
 }
@@ -137,6 +182,7 @@ TEE_Result pas_platform_auth_and_reset(uint32_t pas_id)
 	struct qcom_pas_subsys *subsys = qcom_pas_lookup(pas_id);
 	TEE_Result res = TEE_ERROR_GENERIC;
 	struct qcom_pas_data *data = NULL;
+	uint32_t missing = 0;
 
 	if (!subsys)
 		return TEE_ERROR_NOT_SUPPORTED;
@@ -144,6 +190,20 @@ TEE_Result pas_platform_auth_and_reset(uint32_t pas_id)
 	data = &subsys->data;
 	if (!data->fw_base)
 		return TEE_ERROR_NO_DATA;
+
+	/*
+	 * Enforce load ordering: every declared dependency (see depends_on
+	 * in pas_data.h) must be loaded before this subsystem's fw_start()
+	 * runs, so fw_start() can consume their firmware via
+	 * qcom_pas_get_fw(). The reverse order is enforced in
+	 * pas_platform_shutdown().
+	 */
+	missing = qcom_pas_missing_dep(data);
+	if (missing) {
+		EMSG("PAS %#"PRIx32" depends on %#"PRIx32", not loaded",
+		     pas_id, missing);
+		return TEE_ERROR_BAD_STATE;
+	}
 
 	switch (subsys->reset_seq) {
 	case QCOM_PAS_RESET_CLK_FULL:
@@ -192,9 +252,9 @@ TEE_Result pas_platform_shutdown(uint32_t pas_id)
 	if (!subsys || !subsys->ops->fw_shutdown)
 		return TEE_ERROR_NOT_SUPPORTED;
 
-	dependent = qcom_pas_dependent(pas_id);
-	if (dependent && dependent->data.loaded) {
-		EMSG("PAS %#"PRIx32" still depends on %#"PRIx32, pas_id,
+	dependent = qcom_pas_loaded_dependent(pas_id);
+	if (dependent) {
+		EMSG("PAS %#"PRIx32" still depended on by %#"PRIx32, pas_id,
 		     dependent->data.pas_id);
 		return TEE_ERROR_BAD_STATE;
 	}

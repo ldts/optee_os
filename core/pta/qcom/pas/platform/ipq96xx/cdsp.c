@@ -105,8 +105,8 @@ static TEE_Result cdsp_fw_start(struct qcom_pas_data *data)
 	struct io_pa_va tcsr_spare = { .pa = TCSR_SPARE_BASE };
 	vaddr_t turing = io_pa_or_va(&data->base, data->size);
 	struct io_pa_va mpm2 = { .pa = MPM2_MPM_BASE };
-	struct qcom_pas_subsys *dtb_subsys = NULL;
-	struct qcom_pas_data *dtb = NULL;
+	paddr_t dtb_base = 0;
+	size_t dtb_size = 0;
 	vaddr_t spare_va = 0;
 	vaddr_t qdsp6ss = 0;
 	vaddr_t mpm2_va = 0;
@@ -117,12 +117,19 @@ static TEE_Result cdsp_fw_start(struct qcom_pas_data *data)
 	if (!turing)
 		return TEE_ERROR_BAD_STATE;
 
-	dtb_subsys = qcom_pas_lookup(data->dtb_pas_id);
-	if (!dtb_subsys || !qcom_pas_is_loaded(data->dtb_pas_id)) {
+	/*
+	 * CDSP's sole dependency (see depends_on in subsys.c) is the DTB
+	 * blob. The core guarantees it is loaded before we run (see
+	 * pas_platform_auth_and_reset()); fetch its location without
+	 * reaching into that subsystem's private data.
+	 */
+	if (!data->depends_on || !data->depends_on[0])
+		return TEE_ERROR_BAD_STATE;
+
+	if (qcom_pas_get_fw(data->depends_on[0], &dtb_base, &dtb_size)) {
 		EMSG("CDSP DTB firmware not loaded");
 		return TEE_ERROR_BAD_STATE;
 	}
-	dtb = &dtb_subsys->data;
 
 	tcsr = turing + TURING_TCSR_OFFSET;
 	qdsp6ss = turing + TURING_QDSP6SS_OFFSET;
@@ -141,11 +148,11 @@ static TEE_Result cdsp_fw_start(struct qcom_pas_data *data)
 	io_write32(qdsp6ss + Q6SS_BOOT_AUTO_BREAK_EN_REG,
 		   BOOT_AUTO_BREAK_ENABLE);
 
-	io_write32(qdsp6ss + DTB_CONFIG_0_REG, (uint32_t)dtb->fw_base);
-	io_write32(qdsp6ss + DTB_CONFIG_1_REG, (uint32_t)(dtb->fw_base >> 32));
+	io_write32(qdsp6ss + DTB_CONFIG_0_REG, (uint32_t)dtb_base);
+	io_write32(qdsp6ss + DTB_CONFIG_1_REG, (uint32_t)(dtb_base >> 32));
 	io_write32(qdsp6ss + DTB_CONFIG_2_REG, DTB_CHIP_FAMILY_ID);
 	io_write32(qdsp6ss + DTB_CONFIG_3_REG, DTB_VERSION);
-	io_write32(qdsp6ss + DTB_CONFIG_5_REG, (uint32_t)dtb->fw_size);
+	io_write32(qdsp6ss + DTB_CONFIG_5_REG, (uint32_t)dtb_size);
 	if (debug_q6)
 		io_write32(qdsp6ss + Q6SS_BOOT_CTRL_REG, Q6SS_BREAK_AT_START);
 
