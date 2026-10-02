@@ -141,11 +141,19 @@ TEE_Result pas_platform_mem_setup(uint32_t pas_id, uint32_t fw_size,
 	 * skip mapping for them.
 	 */
 	if (data->size && !data->base.va) {
-		enum teecore_memtypes type = data->map_secure ?
-					      MEM_AREA_IO_SEC :
-					      MEM_AREA_IO_NSEC;
+		/*
+		 * map_type selects a secure vs non-secure window, so reject a
+		 * descriptor that failed to set it rather than mapping with an
+		 * unintended type. Checked in all builds, not just debug.
+		 */
+		if (data->map_type != MEM_AREA_IO_SEC &&
+		    data->map_type != MEM_AREA_IO_NSEC) {
+			EMSG("PAS %#"PRIx32" has invalid map_type %d", pas_id,
+			     data->map_type);
+			return TEE_ERROR_BAD_STATE;
+		}
 
-		data->base.va = (vaddr_t)core_mmu_add_mapping(type,
+		data->base.va = (vaddr_t)core_mmu_add_mapping(data->map_type,
 							      data->base.pa,
 							      data->size);
 		if (!data->base.va)

@@ -28,8 +28,12 @@ struct qcom_pas_data {
 	/* Set once fw_start() succeeds; cleared once fw_shutdown() succeeds. */
 	bool loaded;
 	enum qcom_clk_group clk_group;
-	/* Map the controller window MEM_AREA_IO_SEC, e.g. when XPU-gated. */
-	bool map_secure;
+	/*
+	 * teecore_memtype used to map the controller window: MEM_AREA_IO_NSEC
+	 * normally, MEM_AREA_IO_SEC when the window is XPU-gated to secure.
+	 * Ignored by subsystems with no window (size == 0).
+	 */
+	enum teecore_memtypes map_type;
 };
 
 #endif /* _PAS_DATA_H_ */

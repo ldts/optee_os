@@ -30,7 +30,7 @@ static struct qcom_pas_subsys subsystems[] = {
 			.base.pa = TURING_BASE,
 			.size = TURING_SIZE,
 			.clk_group = QCOM_CLKS_TURING,
-			.map_secure = true,
+			.map_type = MEM_AREA_IO_SEC,
 		},
 		.ops = &cdsp_ops,
 		.reset_seq = QCOM_PAS_RESET_CLK_ENABLE,
