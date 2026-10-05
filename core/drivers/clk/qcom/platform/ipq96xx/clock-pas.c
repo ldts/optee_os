@@ -68,26 +68,16 @@ static TEE_Result cdsp_cc_enable(vaddr_t cc_base, vaddr_t qdsp6ss_base)
 	size_t i = 0;
 
 	io_setbits32(cc_base + TURING_CC_Q6SS_Q6_AXIM_CBCR,
-		     CBCR_BRANCH_ENABLE_BIT);
-	io_setbits32(cc_base + TURING_CC_Q6SS_Q6_AXIM_CBCR,
-		     CBCR_HW_CTL_ENABLE_BIT);
+		     CBCR_BRANCH_ENABLE_BIT | CBCR_HW_CTL_ENABLE_BIT);
 	io_setbits32(cc_base + TURING_CC_CENG_CDSP_CBCR,
-		     CBCR_BRANCH_ENABLE_BIT);
-	io_setbits32(cc_base + TURING_CC_CENG_CDSP_CBCR,
-		     CBCR_HW_CTL_ENABLE_BIT);
+		     CBCR_BRANCH_ENABLE_BIT | CBCR_HW_CTL_ENABLE_BIT);
 
 	io_setbits32(cc_base + TURING_CC_CENG_PROC_CBCR,
-		     CBCR_BRANCH_ENABLE_BIT);
-	io_setbits32(cc_base + TURING_CC_CENG_PROC_CBCR,
-		     CBCR_HW_CTL_ENABLE_BIT);
-	io_setbits32(cc_base + TURING_CC_CENG_PROC_CBCR,
+		     CBCR_BRANCH_ENABLE_BIT | CBCR_HW_CTL_ENABLE_BIT |
 		     (CLK_SLEEP_CYCLES << CLK_SLEEP_SHIFT) |
 		     (CLK_WAKEUP_CYCLES << CLK_WAKEUP_SHIFT));
 	io_setbits32(cc_base + TURING_CC_CDSPNOC_CBCR,
-		     CBCR_BRANCH_ENABLE_BIT);
-	io_setbits32(cc_base + TURING_CC_CDSPNOC_CBCR,
-		     CBCR_HW_CTL_ENABLE_BIT);
-	io_setbits32(cc_base + TURING_CC_CDSPNOC_CBCR,
+		     CBCR_BRANCH_ENABLE_BIT | CBCR_HW_CTL_ENABLE_BIT |
 		     (CLK_SLEEP_CYCLES << CLK_SLEEP_SHIFT) |
 		     (CLK_WAKEUP_CYCLES << CLK_WAKEUP_SHIFT));
 
@@ -97,12 +87,9 @@ static TEE_Result cdsp_cc_enable(vaddr_t cc_base, vaddr_t qdsp6ss_base)
 			return res;
 	}
 
-	for (i = 0; i < ARRAY_SIZE(qdsp6ss_cbcr_offsets); i++) {
+	for (i = 0; i < ARRAY_SIZE(qdsp6ss_cbcr_offsets); i++)
 		io_setbits32(qdsp6ss_base + qdsp6ss_cbcr_offsets[i],
-			     CBCR_BRANCH_ENABLE_BIT);
-		io_setbits32(qdsp6ss_base + qdsp6ss_cbcr_offsets[i],
-			     CBCR_HW_CTL_ENABLE_BIT);
-	}
+			     CBCR_BRANCH_ENABLE_BIT | CBCR_HW_CTL_ENABLE_BIT);
 
 	res = qcom_clock_enable_cbc(qdsp6ss_base + QDSP6SS_DEBUG_CBCR);
 	if (res)
