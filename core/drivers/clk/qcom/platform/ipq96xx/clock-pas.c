@@ -17,37 +17,28 @@
 
 static TEE_Result cdsp_gcc_clk_enable(vaddr_t gcc_base)
 {
+	static const uint32_t cbcr_offsets[] = {
+		GCC_Q6SS_TSCTR_1TO2_CLK_CBCR,
+		GCC_TURING_EPCB_RX_CLK_CBCR,
+		GCC_TURING_Q6_AXIM_DIV_CLK_CBCR,
+		GCC_TURING_PCLK_DBG_CLK_CBCR,
+		GCC_TURING_Q6SS_TRIG_CLK_CBCR,
+		GCC_TURING_CXO_CLK_CBCR,
+		GCC_TURING_ATBM_AT_CLK_CBCR,
+		GCC_TURING_AHBS_CLK_CBCR,
+		GCC_TURING_GEMNOC_CLK_CBCR,
+		GCC_CNOC_TURING_AHBS_CLK_CBCR,
+	};
 	TEE_Result res = TEE_SUCCESS;
+	size_t i = 0;
 
-	res = qcom_clock_enable_cbc(gcc_base + GCC_Q6SS_TSCTR_1TO2_CLK_CBCR);
-	if (res)
-		return res;
-	res = qcom_clock_enable_cbc(gcc_base + GCC_TURING_EPCB_RX_CLK_CBCR);
-	if (res)
-		return res;
-	res = qcom_clock_enable_cbc(gcc_base + GCC_TURING_Q6_AXIM_DIV_CLK_CBCR);
-	if (res)
-		return res;
-	res = qcom_clock_enable_cbc(gcc_base + GCC_TURING_PCLK_DBG_CLK_CBCR);
-	if (res)
-		return res;
-	res = qcom_clock_enable_cbc(gcc_base + GCC_TURING_Q6SS_TRIG_CLK_CBCR);
-	if (res)
-		return res;
-	res = qcom_clock_enable_cbc(gcc_base + GCC_TURING_CXO_CLK_CBCR);
-	if (res)
-		return res;
-	res = qcom_clock_enable_cbc(gcc_base + GCC_TURING_ATBM_AT_CLK_CBCR);
-	if (res)
-		return res;
-	res = qcom_clock_enable_cbc(gcc_base + GCC_TURING_AHBS_CLK_CBCR);
-	if (res)
-		return res;
-	res = qcom_clock_enable_cbc(gcc_base + GCC_TURING_GEMNOC_CLK_CBCR);
-	if (res)
-		return res;
+	for (i = 0; i < ARRAY_SIZE(cbcr_offsets); i++) {
+		res = qcom_clock_enable_cbc(gcc_base + cbcr_offsets[i]);
+		if (res)
+			return res;
+	}
 
-	return qcom_clock_enable_cbc(gcc_base + GCC_CNOC_TURING_AHBS_CLK_CBCR);
+	return TEE_SUCCESS;
 }
 
 static TEE_Result cdsp_cc_enable(vaddr_t cc_base, vaddr_t qdsp6ss_base)
