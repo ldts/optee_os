@@ -241,6 +241,18 @@ struct elf_se_hdr {
 #define SPI_CS_ASSERT			8
 #define SPI_CS_DEASSERT			9
 
+/*
+ * M_CMD parameter bit (M_PARAMS field, below M_OPCODE_SHFT). Setting
+ * FRAGMENTATION tells the SE this transfer is one fragment of a larger
+ * transaction and to keep CS asserted when the command completes, instead
+ * of releasing it. Required to chain the SPI-TIS header, wait-state and
+ * payload transfers under a single CS: without it the SE drops CS at the
+ * end of each data M_CMD, aborting the TPM transaction mid-flight. Matches
+ * mainline spi-geni-qcom.c (FRAGMENTATION = BIT(2)); CS is still released
+ * explicitly by the SPI_CS_DEASSERT command in end().
+ */
+#define FRAGMENTATION			BIT32(2)
+
 #define QUP_SPI_M_CMD_TIMEOUT_US	1000000
 #define QUP_SPI_CANCEL_TIMEOUT_US	1000000
 #define QUP_SPI_ABORT_TIMEOUT_US	1000000
@@ -874,7 +886,7 @@ static enum spi_result qup_spi_txrx(struct qup_spi_data *qs,
 	qs->bytes_per_word = bytes_per_word;
 
 	geni_setup_m_cmd(qs, (wdat ? SPI_TX_ONLY : 0) | (rdat ? SPI_RX_ONLY : 0),
-			  0);
+			 FRAGMENTATION);
 	if (qs->tx_rem_bytes) {
 		io_write32(qs->base + SE_GENI_TX_WATERMARK_REG, 1);
 		qup_spi_fifo_fill_tx(qs);
