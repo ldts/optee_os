@@ -10,4 +10,5 @@ srcs-y += boot_mode.c
 endif
 
 subdirs-$(CFG_QCOM_QFPROM_FUSEPROV) += provision
+subdirs-$(CFG_DRIVERS_TPM2_SPI) += tpm
 subdirs-y += $(QCOM_ARCH_FAMILY)
