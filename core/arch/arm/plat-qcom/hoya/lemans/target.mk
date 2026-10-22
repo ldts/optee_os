@@ -6,6 +6,28 @@ CFG_QCOM_TLMM ?= y
 CFG_QCOM_DIAG_LOG ?= $(CFG_TEE_CORE_DEBUG)
 CFG_QCOM_GENI_SPI ?= y
 
+# Discrete TPM (dTPM) on QUP2 SE2, driven over SPI using the TCG PTP SPI
+# (TIS) protocol. The TCG PCR provider / event-log replay is not wired here
+# (this platform has no firmware TPM event log at a fixed address); the chip
+# is used directly. Enable CFG_CORE_TPM_EVENT_LOG separately if that changes.
+CFG_DRIVERS_TPM2 ?= y
+CFG_DRIVERS_TPM2_SPI ?= y
+ifeq ($(CFG_DRIVERS_TPM2_SPI),y)
+$(call force,CFG_QCOM_GENI_SPI,y)
+$(call force,CFG_DRIVERS_TPM2,y)
+endif
+# Expose the dTPM to the normal world (Linux TEE-backed TPM driver). Needs
+# the device-enumeration PTA so Linux can discover it by UUID.
+CFG_TPM_PASSTHROUGH_PTA ?= y
+ifeq ($(CFG_TPM_PASSTHROUGH_PTA),y)
+$(call force,CFG_DEVICE_ENUM_PTA,y)
+endif
+# SPI serial engine and chip-select the dTPM is wired to (QUP2_SE2_SPI_ID),
+# and the SPI bus clock to run it at.
+CFG_TPM2_SPI_SE_ID ?= 15
+CFG_TPM2_SPI_CS ?= 0
+CFG_TPM2_SPI_SPEED_HZ ?= 20000000
+
 ifneq ($(CFG_INSECURE),y)
 CFG_QCOM_QFPROM_FUSEPROV ?= y
 endif

@@ -6,4 +6,5 @@ srcs-$(CFG_QCOM_DIAG_LOG) += diag_log.c
 srcs-$(CFG_QCOM_XPU_PROTECT) += xpu_policy.c
 
 subdirs-$(CFG_QCOM_QFPROM_FUSEPROV) += provision
+subdirs-$(CFG_DRIVERS_TPM2_SPI) += tpm
 subdirs-y += $(QCOM_ARCH_FAMILY)
