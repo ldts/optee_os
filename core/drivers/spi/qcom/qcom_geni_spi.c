@@ -1092,7 +1092,7 @@ static TEE_Result qup_spi_pinctrl_setup(struct qup_spi_data *qs)
 		return res;
 	}
 
-	IMSG("QUP SPI %u: applied %u pin group(s)", qs->id,
+	FMSG("QUP SPI %u: applied %u pin group(s)", qs->id,
 	     qs->pin_group_count);
 
 	return TEE_SUCCESS;
