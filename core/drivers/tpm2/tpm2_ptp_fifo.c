@@ -425,12 +425,14 @@ enum tpm2_result tpm2_fifo_recv(struct tpm2_chip *chip, uint8_t *buf,
 		param_size_flag = 0;
 		ret = TPM2_OK;
 
-		while (bytes2read - rxsize) {
+		while (rxsize < bytes2read) {
 			ret = tpm2_fifo_get_burstcount(chip, &burstcnt);
 			if (ret)
 				break;
 
 			sz = MIN(burstcnt, bytes2read - rxsize);
+			/* Never write past the caller's buffer */
+			sz = MIN(sz, *len - rxsize);
 			ret = ops->rx8(chip, TPM2_DATA_FIFO(chip->locality), sz,
 				       buf + rxsize);
 			if (ret)
@@ -446,13 +448,35 @@ enum tpm2_result tpm2_fifo_recv(struct tpm2_chip *chip, uint8_t *buf,
 				bytes2read = tpm2_cmd_len((void *)buf);
 				param_size_flag = true;
 
+				/*
+				 * A length below the header size or below what
+				 * has already been read would underflow the
+				 * loop bound and drive an out-of-bounds write;
+				 * a length past the caller's buffer is equally
+				 * impossible for a bounded TIS response. Both
+				 * mean the response stream slipped -- a chip
+				 * glitch or a transient transport hiccup can
+				 * offset it by a byte. Fail this attempt and
+				 * let the outer loop re-read the response via
+				 * TIS RESPONSE_RETRY (bounded by
+				 * TPM2_DD_RETRY_CNT) rather than aborting the
+				 * command. Leave *len untouched so a retry
+				 * keeps the real buffer bound.
+				 */
+				if (bytes2read < TPM2_HDR_LEN ||
+				    bytes2read < rxsize) {
+					EMSG("Bad response length %" PRIx32
+					     ", retrying", bytes2read);
+					ret = TPM2_ERR_IO;
+					break;
+				}
+
 				if (bytes2read > *len) {
-					EMSG("Buffer too small: %" PRIx32 "> %"
-					      PRIx32, bytes2read, *len);
-					/* Return required buffer length */
-					*len = bytes2read;
+					EMSG("Response length %" PRIx32
+					     " > buffer %" PRIx32 ", retrying",
+					     bytes2read, *len);
 					ret = TPM2_ERR_SHORT_BUFFER;
-					goto out;
+					break;
 				}
 			}
 		}
