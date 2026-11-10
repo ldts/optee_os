@@ -207,7 +207,12 @@ enum tpm2_result tpm2_chip_register(struct tpm2_chip *chip)
 	if (tpm2_device)
 		return TPM2_ERR_GENERIC;
 
-	if (!chip || !chip->ops)
+	/*
+	 * init() and end() are mandatory: register() and the fail-closed
+	 * teardown below call them unconditionally, so reject a transport
+	 * missing either rather than dereferencing a NULL op.
+	 */
+	if (!chip || !chip->ops || !chip->ops->init || !chip->ops->end)
 		return TPM2_ERR_NODEV;
 
 	/* Assign timeouts etc based on interface */

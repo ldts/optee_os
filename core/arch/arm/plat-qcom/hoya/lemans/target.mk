@@ -18,8 +18,8 @@ $(call force,CFG_DRIVERS_TPM2,y)
 endif
 # Expose the dTPM to the normal world (Linux TEE-backed TPM driver). Needs
 # the device-enumeration PTA so Linux can discover it by UUID.
-CFG_TPM_PASSTHROUGH_PTA ?= y
-ifeq ($(CFG_TPM_PASSTHROUGH_PTA),y)
+CFG_DTPM_MEDIATOR_PTA ?= y
+ifeq ($(CFG_DTPM_MEDIATOR_PTA),y)
 $(call force,CFG_DEVICE_ENUM_PTA,y)
 endif
 # SPI serial engine and chip-select the dTPM is wired to (QUP2_SE2_SPI_ID),

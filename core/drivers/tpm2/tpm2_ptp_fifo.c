@@ -380,6 +380,28 @@ enum tpm2_result tpm2_fifo_send(struct tpm2_chip *chip, uint8_t *buf,
 	return ret;
 }
 
+/*
+ * Reject a reported response length that would underflow the read-loop bound
+ * and overflow buf, or that exceeds the caller's buffer. Such a slipped stream
+ * is retried by the caller via TIS RESPONSE_RETRY.
+ */
+static enum tpm2_result tpm2_check_resp_len(uint32_t resp_len, uint32_t rxsize,
+					    uint32_t buf_len)
+{
+	if (resp_len < TPM2_HDR_LEN || resp_len < rxsize) {
+		EMSG("Bad response length %" PRIx32 ", retrying", resp_len);
+		return TPM2_ERR_IO;
+	}
+
+	if (resp_len > buf_len) {
+		EMSG("Response length %" PRIx32 " > buffer %" PRIx32
+		     ", retrying", resp_len, buf_len);
+		return TPM2_ERR_SHORT_BUFFER;
+	}
+
+	return TPM2_OK;
+}
+
 /* Based on Fig 4 - Receive response using FIFO protocol in DD Specification */
 enum tpm2_result tpm2_fifo_recv(struct tpm2_chip *chip, uint8_t *buf,
 				uint32_t *len, uint32_t cmd_duration)
@@ -448,36 +470,21 @@ enum tpm2_result tpm2_fifo_recv(struct tpm2_chip *chip, uint8_t *buf,
 				bytes2read = tpm2_cmd_len((void *)buf);
 				param_size_flag = true;
 
+				ret = tpm2_check_resp_len(bytes2read, rxsize,
+							  *len);
 				/*
-				 * A length below the header size or below what
-				 * has already been read would underflow the
-				 * loop bound and drive an out-of-bounds write;
-				 * a length past the caller's buffer is equally
-				 * impossible for a bounded TIS response. Both
-				 * mean the response stream slipped -- a chip
-				 * glitch or a transient transport hiccup can
-				 * offset it by a byte. Fail this attempt and
-				 * let the outer loop re-read the response via
-				 * TIS RESPONSE_RETRY (bounded by
-				 * TPM2_DD_RETRY_CNT) rather than aborting the
-				 * command. Leave *len untouched so a retry
-				 * keeps the real buffer bound.
+				 * A response that does not fit cannot change on
+				 * a re-read: report the required length and stop
+				 * rather than retrying pointlessly. A bad length
+				 * (corrupt header) still retries via
+				 * RESPONSE_RETRY, so leave *len untouched there.
 				 */
-				if (bytes2read < TPM2_HDR_LEN ||
-				    bytes2read < rxsize) {
-					EMSG("Bad response length %" PRIx32
-					     ", retrying", bytes2read);
-					ret = TPM2_ERR_IO;
-					break;
+				if (ret == TPM2_ERR_SHORT_BUFFER) {
+					*len = bytes2read;
+					goto out;
 				}
-
-				if (bytes2read > *len) {
-					EMSG("Response length %" PRIx32
-					     " > buffer %" PRIx32 ", retrying",
-					     bytes2read, *len);
-					ret = TPM2_ERR_SHORT_BUFFER;
+				if (ret)
 					break;
-				}
 			}
 		}
 

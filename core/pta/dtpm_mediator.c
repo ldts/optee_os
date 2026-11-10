@@ -2,27 +2,36 @@
 /*
  * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  *
- * Pseudo TA that exposes the discrete TPM owned by OP-TEE to the normal
- * world as a TPM transport. It advertises itself on the OP-TEE device bus
+ * Pseudo TA that mediates the normal world's access to the discrete TPM
+ * owned by OP-TEE. It advertises itself on the OP-TEE device bus
  * (TA_FLAG_DEVICE_ENUM) so the Linux TEE-backed TPM driver can bind to it
- * by UUID and pipe raw TPM2 commands through to the in-core driver (the
- * SPI TIS chip driver). This is the discrete-TPM analogue of the fTPM TA's
- * SUBMIT_COMMAND, using a distinct UUID rather than the fTPM one.
+ * by UUID and forward raw TPM2 commands to the in-core driver (the SPI TIS
+ * chip driver). The command shape is the discrete-TPM analogue of the fTPM
+ * TA's SUBMIT_COMMAND, using a distinct UUID rather than the fTPM one.
+ *
+ * It is a mediator rather than a plain pass-through because the secure world
+ * stays the owner of the chip: today it only relays commands, but policing
+ * normal-world access (e.g. denying locality 4, see OP-TEE/optee_os#8160) is
+ * meant to live here. That policy is not implemented yet.
  */
 
 #include <drivers/tpm2_chip.h>
 #include <kernel/mutex.h>
 #include <kernel/pseudo_ta.h>
-#include <pta_tpm_passthrough.h>
+#include <pta_dtpm_mediator.h>
 #include <string.h>
 #include <tee_api_defines.h>
 #include <trace.h>
 
-#define PTA_NAME "tpm_passthrough.pta"
+#define PTA_NAME "dtpm_mediator.pta"
 
 /*
- * Serialise transceive against other in-core users of the single TPM chip
- * (e.g. the TCG event-log provider), and against concurrent REE callers.
+ * Serialise concurrent REE callers of this mediator against each other so a
+ * command and its response are not interleaved on the single chip. The
+ * in-core TCG event-log provider also reaches the same chip; its PCR extends
+ * are driven by OP-TEE's measured-boot path, not by the REE, so they do not
+ * contend here. A lock shared with that provider would only be needed if
+ * runtime provider access is added.
  */
 static struct mutex tpm_lock = MUTEX_INITIALIZER;
 
@@ -50,7 +59,7 @@ static TEE_Result tpm_pta_submit(uint32_t ptypes,
 	res = tpm2_chip_send(cmd, cmd_len);
 	if (res) {
 		mutex_unlock(&tpm_lock);
-		EMSG("TPM passthrough: send failed (%d)", res);
+		EMSG("dTPM mediator: send failed (%d)", res);
 		return TEE_ERROR_COMMUNICATION;
 	}
 
@@ -64,7 +73,7 @@ static TEE_Result tpm_pta_submit(uint32_t ptypes,
 		return TEE_ERROR_SHORT_BUFFER;
 	}
 	if (res) {
-		EMSG("TPM passthrough: recv failed (%d)", res);
+		EMSG("dTPM mediator: recv failed (%d)", res);
 		return TEE_ERROR_COMMUNICATION;
 	}
 
@@ -78,7 +87,7 @@ static TEE_Result invoke_command(void *session __unused, uint32_t cmd,
 				 TEE_Param params[TEE_NUM_PARAMS])
 {
 	switch (cmd) {
-	case PTA_TPM_PASSTHROUGH_SUBMIT_COMMAND:
+	case PTA_DTPM_MEDIATOR_SUBMIT_COMMAND:
 		return tpm_pta_submit(ptypes, params);
 	default:
 		return TEE_ERROR_NOT_IMPLEMENTED;
@@ -95,7 +104,7 @@ static TEE_Result open_session(uint32_t ptypes __unused,
 	/*
 	 * The discrete TPM is a shared security resource: raw command access
 	 * lets a caller reset PCRs or alter hierarchies and so defeat measured
-	 * boot. The passthrough exists only to carry the normal-world kernel's
+	 * boot. The mediator exists only to carry the normal-world kernel's
 	 * TPM stack, so restrict it to the REE kernel and reject other TAs and
 	 * REE user space.
 	 */
@@ -105,7 +114,7 @@ static TEE_Result open_session(uint32_t ptypes __unused,
 	return TEE_SUCCESS;
 }
 
-pseudo_ta_register(.uuid = PTA_TPM_PASSTHROUGH_UUID, .name = PTA_NAME,
+pseudo_ta_register(.uuid = PTA_DTPM_MEDIATOR_UUID, .name = PTA_NAME,
 		   .flags = PTA_DEFAULT_FLAGS | TA_FLAG_DEVICE_ENUM,
 		   .open_session_entry_point = open_session,
 		   .invoke_command_entry_point = invoke_command);

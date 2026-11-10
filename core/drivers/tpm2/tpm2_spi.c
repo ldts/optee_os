@@ -51,6 +51,63 @@ static const struct tpm2_ptp_ops tpm2_fifo_ops = {
 };
 
 /*
+ * Data phase of a TIS transfer. On a read, clock out len zero bytes and
+ * capture the TPM's reply on MISO into buf; on a write, drive len payload
+ * bytes from buf on MOSI and discard the MISO bytes clocked in alongside.
+ * len is bounded by TPM2_SPI_MAX_XFER by the caller.
+ */
+static enum tpm2_result tpm2_spi_data(struct spi_chip *chip, bool read,
+				      uint16_t len, uint8_t *buf)
+{
+	uint8_t zero[TPM2_SPI_MAX_XFER] = { };
+	uint8_t *tx = read ? zero : buf;
+	uint8_t *rx = read ? buf : zero;
+
+	if (chip->ops->txrx8(chip, tx, rx, len) != SPI_OK) {
+		EMSG("TPM2 SPI: %s data transfer failed",
+		     read ? "read" : "write");
+		return TPM2_ERR_IO;
+	}
+
+	return TPM2_OK;
+}
+
+/*
+ * TIS flow control: the TPM may stall between the header and the data phase.
+ * first_status is the MISO byte returned with the last header byte; if it is
+ * not ready, poll one byte at a time (CS held) until the ready bit appears or
+ * TPM2_SPI_WAIT_RETRIES is exhausted.
+ */
+static enum tpm2_result tpm2_spi_wait_ready(struct spi_chip *chip,
+					    uint8_t first_status)
+{
+	unsigned int retries = 0;
+
+	if (first_status & TPM2_SPI_WAIT_STATE_RDY)
+		return TPM2_OK;
+
+	for (retries = 0; retries < TPM2_SPI_WAIT_RETRIES; retries++) {
+		uint8_t tx = 0;
+		uint8_t rx = 0;
+
+		if (chip->ops->txrx8(chip, &tx, &rx, 1) != SPI_OK) {
+			EMSG("TPM2 SPI: wait-state transfer failed");
+			return TPM2_ERR_IO;
+		}
+
+		if (rx & TPM2_SPI_WAIT_STATE_RDY)
+			return TPM2_OK;
+
+		mdelay(TPM2_TIMEOUT_RETRY_MS);
+	}
+
+	EMSG("TPM2 SPI: wait-state never asserted after %u polls",
+	     TPM2_SPI_WAIT_RETRIES);
+
+	return TPM2_ERR_TIMEOUT;
+}
+
+/*
  * Run one SPI TIS transaction for up to TPM2_SPI_MAX_XFER bytes at TIS
  * register offset adr. CS is asserted for the whole header + wait-state +
  * data sequence and deasserted at the end.
@@ -61,11 +118,8 @@ static enum tpm2_result tpm2_spi_xfer_one(struct spi_chip *chip, bool read,
 {
 	uint8_t hdr[TPM2_SPI_HDR_LEN] = { };
 	uint8_t rsp[TPM2_SPI_HDR_LEN] = { };
-	uint8_t zero[TPM2_SPI_MAX_XFER] = { };
 	uint32_t addr = TPM2_SPI_TIS_BASE | (adr & 0xffff);
 	enum tpm2_result ret = TPM2_ERR_IO;
-	unsigned int retries = 0;
-	bool ready = false;
 
 	assert(len >= 1 && len <= TPM2_SPI_MAX_XFER);
 
@@ -80,65 +134,28 @@ static enum tpm2_result tpm2_spi_xfer_one(struct spi_chip *chip, bool read,
 	chip->ops->start(chip);
 
 	/*
-	 * TCG PTP SPI (TIS) software flow control: shift the 4-byte header
-	 * full-duplex; the MISO byte clocked in during the last header byte is
-	 * the first wait-state status. If its ready bit (LSB) is clear, keep
-	 * clocking single bytes until the TPM asserts ready, then shift the
-	 * payload -- reads capture MISO, writes drive MOSI. CS stays asserted
-	 * across the whole sequence (the SPI controller must hold it between
-	 * these chained transfers).
+	 * Shift the 4-byte header full-duplex; the MISO byte returned with the
+	 * last header byte is the first wait-state status. Reads then capture
+	 * MISO, writes drive MOSI. CS stays asserted across the header,
+	 * wait-state poll and data phase -- the controller must hold it between
+	 * these chained transfers.
 	 */
 	if (chip->ops->txrx8(chip, hdr, rsp, TPM2_SPI_HDR_LEN) != SPI_OK) {
 		EMSG("TPM2 SPI: header transfer failed");
 		goto out;
 	}
 
-	if (rsp[TPM2_SPI_HDR_LEN - 1] & TPM2_SPI_WAIT_STATE_RDY) {
-		ready = true;
-	} else {
-		for (retries = 0; retries < TPM2_SPI_WAIT_RETRIES; retries++) {
-			uint8_t tx = 0;
-			uint8_t rx = 0;
-
-			if (chip->ops->txrx8(chip, &tx, &rx, 1) != SPI_OK) {
-				EMSG("TPM2 SPI: wait-state transfer failed");
-				goto out;
-			}
-
-			if (rx & TPM2_SPI_WAIT_STATE_RDY) {
-				ready = true;
-				break;
-			}
-
-			mdelay(TPM2_TIMEOUT_RETRY_MS);
-		}
-	}
-
-	if (!ready) {
-		EMSG("TPM2 SPI: wait-state never asserted after %u polls",
-		     TPM2_SPI_WAIT_RETRIES);
-		ret = TPM2_ERR_TIMEOUT;
+	ret = tpm2_spi_wait_ready(chip, rsp[TPM2_SPI_HDR_LEN - 1]);
+	if (ret)
 		goto out;
-	}
 
-	if (read) {
-		if (chip->ops->txrx8(chip, zero, buf, len) != SPI_OK) {
-			EMSG("TPM2 SPI: read data transfer failed");
-			goto out;
-		}
-	} else {
-		if (chip->ops->txrx8(chip, buf, zero, len) != SPI_OK) {
-			EMSG("TPM2 SPI: write data transfer failed");
-			goto out;
-		}
-	}
-
-	ret = TPM2_OK;
+	ret = tpm2_spi_data(chip, read, len, buf);
 out:
 	chip->ops->end(chip);
 
 	if (ret)
-		EMSG("TPM2 SPI: xfer adr=%#" PRIx32 " failed, ret=%d", adr, ret);
+		EMSG("TPM2 SPI: xfer adr=%#" PRIx32 " failed, ret=%d",
+		     adr, ret);
 
 	return ret;
 }
@@ -235,12 +252,20 @@ enum tpm2_result tpm2_spi_init(struct spi_chip *chip)
 	 * Read the fixed vendor/device ID before starting the TPM stack: a
 	 * sane DID_VID is the definitive "a TPM is responding on this bus"
 	 * check (0x00000000 means MISO is dead, 0xffffffff means it floats).
+	 * Fail closed on either, rather than registering a chip that is not
+	 * there and transceiving into the void.
 	 */
 	ret = tpm2_spi_rx32(&tpm2_spi_chip, TPM2_DID_VID(0), &did_vid);
-	if (ret)
+	if (ret) {
 		EMSG("TPM2 SPI: DID_VID read failed: %d", ret);
-	else
-		IMSG("TPM2 SPI: TPM detected, DID_VID=%#" PRIx32, did_vid);
+		return ret;
+	}
+	if (did_vid == 0 || did_vid == 0xffffffff) {
+		EMSG("TPM2 SPI: no TPM on the bus (DID_VID=%#" PRIx32 ")",
+		     did_vid);
+		return TPM2_ERR_NODEV;
+	}
+	IMSG("TPM2 SPI: TPM detected, DID_VID=%#" PRIx32, did_vid);
 
 	ret = tpm2_spi_rx8(&tpm2_spi_chip, TPM2_ACCESS(0), sizeof(access),
 			   &access);

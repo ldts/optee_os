@@ -44,7 +44,7 @@ enum tpm2_cmd_duration {
 
 #define TPM2_TIMEOUT_RETRY_MS	5
 
-/* TPM Interface timouts in ms as defined Table 18 of the spec */
+/* TPM Interface timeouts in ms as defined Table 18 of the spec */
 enum tpm2_interface_timeouts {
 	TPM2_TIMEOUT_A = 750,
 	TPM2_TIMEOUT_B = 2000,
