@@ -41,6 +41,16 @@
 /* Number of wait-state polling bytes before giving up */
 #define TPM2_SPI_WAIT_RETRIES	50
 
+/*
+ * Power-on readiness probes at init. On a cold boot the TPM can still be
+ * powering up when the platform runs tpm2_spi_init() (OP-TEE's driver_init
+ * pass), so the first accesses see a not-ready bus or a valid DID_VID but an
+ * ACCESS register whose tpmRegValidSts bit is still clear. Each probe already
+ * polls the wait-state for up to TPM2_SPI_WAIT_RETRIES * TPM2_TIMEOUT_RETRY_MS
+ * (~250 ms), so this many probes is a few seconds of settle at most.
+ */
+#define TPM2_SPI_POWERON_TRIES	10
+
 static struct spi_chip *tpm2_spi_ctrl;
 
 static const struct tpm2_ptp_ops tpm2_fifo_ops = {
@@ -244,35 +254,43 @@ enum tpm2_result tpm2_spi_init(struct spi_chip *chip)
 	enum tpm2_result ret = TPM2_OK;
 	uint32_t did_vid = 0;
 	uint8_t access = 0;
+	unsigned int tries = 0;
 
 	assert(chip);
 	tpm2_spi_ctrl = chip;
 
 	/*
-	 * Read the fixed vendor/device ID before starting the TPM stack: a
-	 * sane DID_VID is the definitive "a TPM is responding on this bus"
-	 * check (0x00000000 means MISO is dead, 0xffffffff means it floats).
-	 * Fail closed on either, rather than registering a chip that is not
-	 * there and transceiving into the void.
+	 * Wait for the TPM to power up before starting the stack. A sane
+	 * DID_VID (not 0x00000000 "MISO dead" or 0xffffffff "floating") proves
+	 * a TPM is answering on the bus; ACCESS.tpmRegValidSts (TPM2_ACCESS_VALID)
+	 * proves its registers are valid, so the later TPM2_Startup/locality
+	 * requests will not fail against a chip that is only half awake. A cold
+	 * boot can leave either not-ready for a short while, so poll both rather
+	 * than reading once. Fail closed (NODEV) if the budget runs out.
 	 */
-	ret = tpm2_spi_rx32(&tpm2_spi_chip, TPM2_DID_VID(0), &did_vid);
-	if (ret) {
-		EMSG("TPM2 SPI: DID_VID read failed: %d", ret);
-		return ret;
-	}
-	if (did_vid == 0 || did_vid == 0xffffffff) {
-		EMSG("TPM2 SPI: no TPM on the bus (DID_VID=%#" PRIx32 ")",
-		     did_vid);
-		return TPM2_ERR_NODEV;
-	}
-	IMSG("TPM2 SPI: TPM detected, DID_VID=%#" PRIx32, did_vid);
+	for (tries = 0; tries < TPM2_SPI_POWERON_TRIES; tries++) {
+		if (tries)
+			mdelay(TPM2_TIMEOUT_RETRY_MS);
 
-	ret = tpm2_spi_rx8(&tpm2_spi_chip, TPM2_ACCESS(0), sizeof(access),
-			   &access);
-	if (!ret)
-		DMSG("TPM2 SPI: ACCESS=%#"PRIx8" (VALID=%u active=%u)", access,
-		     !!(access & TPM2_ACCESS_VALID),
-		     !!(access & TPM2_ACCESS_ACTIVE_LOCALITY));
+		ret = tpm2_spi_rx32(&tpm2_spi_chip, TPM2_DID_VID(0), &did_vid);
+		if (ret || did_vid == 0 || did_vid == 0xffffffff)
+			continue;
+
+		ret = tpm2_spi_rx8(&tpm2_spi_chip, TPM2_ACCESS(0),
+				   sizeof(access), &access);
+		if (!ret && (access & TPM2_ACCESS_VALID))
+			break;
+	}
+	if (tries >= TPM2_SPI_POWERON_TRIES) {
+		EMSG("TPM2 SPI: TPM not ready after power-on wait (DID_VID=%#"
+		     PRIx32 " ACCESS=%#" PRIx8 " ret=%d)", did_vid, access, ret);
+		return ret ? ret : TPM2_ERR_NODEV;
+	}
+	IMSG("TPM2 SPI: TPM detected, DID_VID=%#" PRIx32 " (ready after %u probe%s)",
+	     did_vid, tries + 1, tries ? "s" : "");
+	DMSG("TPM2 SPI: ACCESS=%#" PRIx8 " (VALID=%u active=%u)", access,
+	     !!(access & TPM2_ACCESS_VALID),
+	     !!(access & TPM2_ACCESS_ACTIVE_LOCALITY));
 
 	ret = tpm2_chip_register(&tpm2_spi_chip);
 	if (ret) {
