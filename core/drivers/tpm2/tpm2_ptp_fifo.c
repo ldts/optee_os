@@ -473,16 +473,12 @@ enum tpm2_result tpm2_fifo_recv(struct tpm2_chip *chip, uint8_t *buf,
 				ret = tpm2_check_resp_len(bytes2read, rxsize,
 							  *len);
 				/*
-				 * A response that does not fit cannot change on
-				 * a re-read: report the required length and stop
-				 * rather than retrying pointlessly. A bad length
-				 * (corrupt header) still retries via
-				 * RESPONSE_RETRY, so leave *len untouched there.
+				 * A bad or oversized length is almost always a
+				 * corrupt header read on a flaky bus; a re-read
+				 * via RESPONSE_RETRY can recover it, so retry
+				 * rather than bail. A genuinely too-big response
+				 * survives every retry and is reported at out:.
 				 */
-				if (ret == TPM2_ERR_SHORT_BUFFER) {
-					*len = bytes2read;
-					goto out;
-				}
 				if (ret)
 					break;
 			}
@@ -509,6 +505,13 @@ enum tpm2_result tpm2_fifo_recv(struct tpm2_chip *chip, uint8_t *buf,
 		retry_cnt++;
 	}
 out:
+	/*
+	 * A response that still did not fit after every retry is a genuine
+	 * too-big reply, not a transient glitch: report the required length.
+	 */
+	if (ret == TPM2_ERR_SHORT_BUFFER)
+		*len = bytes2read;
+
 	/* Cancel command and relinquish locality */
 	if (tpm2_fifo_end(chip))
 		return TPM2_ERR_GENERIC;
