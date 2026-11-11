@@ -26,7 +26,7 @@ endif
 # and the SPI bus clock to run it at.
 CFG_TPM2_SPI_SE_ID ?= 15
 CFG_TPM2_SPI_CS ?= 0
-CFG_TPM2_SPI_SPEED_HZ ?= 20000000
+CFG_TPM2_SPI_SPEED_HZ ?= 1000000
 
 ifneq ($(CFG_INSECURE),y)
 CFG_QCOM_QFPROM_FUSEPROV ?= y
